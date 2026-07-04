@@ -2,6 +2,7 @@ import * as directChatService from "../services/directChat.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js"; 
+import { sendChatRequestEmail } from "../utils/emailNotification.js";
 
 
 // ─── Send Chat Request
@@ -23,6 +24,8 @@ export const sendChatRequest = async (req, res) => {
       message: `${req.user.fullName || req.user.username} wants to chat with you`,
       data: { chatId: chat._id, fromUserId: req.user.sub },
     });
+
+    await sendChatRequestEmail(toUserId, req.user.fullName || req.user.username);
 
     return success(res, { chat }, "Chat request sent successfully", 201);
   } catch (err) {

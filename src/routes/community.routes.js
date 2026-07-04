@@ -10,13 +10,20 @@ import {
   getCommunityMessages,
   getMyCommunitites,
 } from "../controllers/community.controller.js";
+import {
+  getNotifications,
+  getNotificationCount,
+} from "../controllers/notification.controller.js";
 
 const router = Router();
 
 // ─── Community Routes
-router.post("/", protect, createCommunity);
 router.get("/search", protect, searchCommunities);
 router.get("/my-communities", protect, getMyCommunitites); 
+router.get("/notifications",       protect, getNotifications);      
+router.get("/notifications/count", protect, getNotificationCount);
+
+router.post("/", protect, createCommunity);
 router.get("/:communityId", protect, getCommunity);
 router.post("/:communityId/join", protect, joinCommunity);
 router.delete("/:communityId/leave", protect, leaveCommunity);
