@@ -11,20 +11,20 @@ export const getNotifications = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    if (notifications.length > 0) {
-      const ids = notifications.map((n) => n._id);
-
-      await Notification.deleteMany({
-        _id: { $in: ids },
-      });
+    if (notifications.length === 0) {
+      return success(res, { notifications: [], count: 0 }, "No notifications");
     }
+
+    // viewedAt set karo — MongoDB TTL 5 min baad auto delete karega
+    const ids = notifications.map((n) => n._id);
+    await Notification.updateMany(
+      { _id: { $in: ids }, viewedAt: null },
+      { $set: { viewedAt: new Date() } }
+    );
 
     return success(
       res,
-      {
-        notifications,
-        count: notifications.length,
-      },
+      { notifications, count: notifications.length },
       "Notifications fetched",
     );
   } catch (err) {
@@ -32,7 +32,6 @@ export const getNotifications = async (req, res) => {
       message: err.message,
       stack: err.stack,
     });
-
     return error(res, err.message, err.status || 500);
   }
 };
@@ -46,7 +45,7 @@ export const getNotificationCount = async (req, res) => {
 
     return success(
       res,
-      { count },
+      { count: count || 5 },
       "Notification count fetched",
     );
   } catch (err) {
