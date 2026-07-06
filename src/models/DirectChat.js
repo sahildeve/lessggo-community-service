@@ -7,6 +7,10 @@ const directChatSchema = new mongoose.Schema(
       {
         userId: { type: mongoose.Schema.Types.ObjectId, required: true },
         username: { type: String, required: true },
+        fullName: {
+          type: String,
+          default: null,
+        },
       },
     ],
 

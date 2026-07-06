@@ -1,10 +1,9 @@
 import * as directChatService from "../services/directChat.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
-import { createNotification } from "../utils/notification.js"; 
+import { createNotification } from "../utils/notification.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import Community from "../models/Community.js";
-
 
 // ─── Send Chat Request
 export const sendChatRequest = async (req, res) => {
@@ -13,9 +12,11 @@ export const sendChatRequest = async (req, res) => {
     const chat = await directChatService.sendChatRequest(
       req.user.sub,
       req.user.username,
+      req.user.fullName || req.user.username, // sender fullName
       toUserId,
       toUsername,
-      requestMessage
+      req.body.toFullName || toUsername, // receiver fullName
+      requestMessage,
     );
 
     await createNotification({
@@ -26,11 +27,17 @@ export const sendChatRequest = async (req, res) => {
       data: { chatId: chat._id, fromUserId: req.user.sub },
     });
 
-    await sendChatRequestEmail(toUserId, req.user.fullName || req.user.username);
+    await sendChatRequestEmail(
+      toUserId,
+      req.user.fullName || req.user.username,
+    );
 
     return success(res, { chat }, "Chat request sent successfully", 201);
   } catch (err) {
-    logger.error("Send chat request error:", { message: err.message, stack: err.stack });
+    logger.error("Send chat request error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -47,18 +54,26 @@ export const respondToChatRequest = async (req, res) => {
     );
 
     await createNotification({
-      userId: chat.initiatorId,
-      type: action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
-      title: action === "accepted" ? "Chat Request Accepted!" : "Chat Request Rejected",
-      message: action === "accepted"
-        ? `${req.user.fullName || req.user.username} accepted your chat request`
-        : `${req.user.fullName || req.user.username} rejected your chat request`,
+      userId: chat.requestedBy,
+      type:
+        action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
+      title:
+        action === "accepted"
+          ? "Chat Request Accepted!"
+          : "Chat Request Rejected",
+      message:
+        action === "accepted"
+          ? `${req.user.fullName || req.user.username} accepted your chat request`
+          : `${req.user.fullName || req.user.username} rejected your chat request`,
       data: { chatId: chat._id },
     });
 
     return success(res, { chat }, `Chat request ${action}`);
   } catch (err) {
-    logger.error("Respond to chat request error:", { message: err.message, stack: err.stack });
+    logger.error("Respond to chat request error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -70,11 +85,17 @@ export const getChatHistory = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 50;
     const data = await directChatService.getChatHistory(
-      chatId, req.user.sub, page, limit,
+      chatId,
+      req.user.sub,
+      page,
+      limit,
     );
     return success(res, data, "Chat history fetched");
   } catch (err) {
-    logger.error("Get chat history error:", { message: err.message, stack: err.stack });
+    logger.error("Get chat history error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -85,7 +106,10 @@ export const getUserChats = async (req, res) => {
     const chats = await directChatService.getUserChats(req.user.sub);
     return success(res, { chats }, "Chats fetched successfully");
   } catch (err) {
-    logger.error("Get user chats error:", { message: err.message, stack: err.stack });
+    logger.error("Get user chats error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -94,8 +118,9 @@ export const getUserChats = async (req, res) => {
 export const getPendingRequests = async (req, res) => {
   try {
     // ─── Direct chat pending requests
-    const directRequests =
-      await directChatService.getPendingRequests(req.user.sub);
+    const directRequests = await directChatService.getPendingRequests(
+      req.user.sub,
+    );
 
     // ─── Community join requests
     const communities = await Community.find({

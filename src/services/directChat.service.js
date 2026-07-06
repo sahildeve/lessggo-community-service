@@ -6,8 +6,10 @@ import logger from "../utils/logger.js";
 export const sendChatRequest = async (
   requestedBy,
   requestedByUsername,
+  requestedByFullName,
   toUserId,
   toUsername,
+  toFullName,
   requestMessage,
 ) => {
   // ─── Check: Apne aap ko request nahi bhej sakte
@@ -38,6 +40,23 @@ export const sendChatRequest = async (
       // Rejected tha — dobara request allow karo
       existing.status = "pending";
       existing.requestedBy = requestedBy;
+
+      // Latest user snapshot update karo
+      existing.participants = [
+        {
+          userId: requestedBy,
+          username: requestedByUsername,
+          fullName: requestedByFullName,
+        },
+        {
+          userId: toUserId,
+          username: toUsername,
+          fullName: toFullName,
+        },
+      ];
+
+      existing.requestMessage = requestMessage || null;
+
       await existing.save();
       return existing;
     }
@@ -45,8 +64,16 @@ export const sendChatRequest = async (
 
   const chat = await DirectChat.create({
     participants: [
-      { userId: requestedBy, username: requestedByUsername },
-      { userId: toUserId, username: toUsername },
+      {
+        userId: requestedBy,
+        username: requestedByUsername,
+        fullName: requestedByFullName,
+      },
+      {
+        userId: toUserId,
+        username: toUsername,
+        fullName: toFullName,
+      },
     ],
     requestedBy,
     requestMessage: requestMessage || null, // ← ye add karo
@@ -179,7 +206,7 @@ export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
   };
 };
 
-// ─── Get All Chats of User 
+// ─── Get All Chats of User
 export const getUserChats = async (userId) => {
   const chats = await DirectChat.find({
     "participants.userId": userId,
@@ -191,7 +218,7 @@ export const getUserChats = async (userId) => {
   return chats;
 };
 
-// ─── Get Pending Requests 
+// ─── Get Pending Requests
 export const getPendingRequests = async (userId) => {
   const requests = await DirectChat.find({
     "participants.userId": userId,
