@@ -115,7 +115,8 @@ export const communitySwaggerDocs = {
 
   "/api/community/{communityId}/join": {
     post: {
-      summary: "Join a community",
+      summary:
+        "Join a community (public = direct join, private = send request)",
       tags: ["Community"],
       security: [{ bearerAuth: [] }],
       parameters: [
@@ -123,16 +124,58 @@ export const communitySwaggerDocs = {
           name: "communityId",
           in: "path",
           required: true,
-          schema: { type: "string", example: "6a34aa15f585c7dfc43336a4" },
+          schema: {
+            type: "string",
+            example: "6a34aa15f585c7dfc43336a4",
+          },
         },
       ],
       responses: {
-        200: { description: "Joined community successfully" },
-        400: { description: "Already a member" },
-        404: { description: "Community not found" },
+        200: {
+          description: "Joined successfully or join request sent",
+        },
+        400: {
+          description: "Community full or invalid request",
+        },
+        404: {
+          description: "Community not found",
+        },
+        409: {
+          description: "Already member or request already sent",
+        },
       },
     },
   },
+
+  "/api/community/{communityId}/join-requests": {
+  get: {
+    summary: "Get pending join requests (admin only)",
+    tags: ["Community"],
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "communityId",
+        in: "path",
+        required: true,
+        schema: {
+          type: "string",
+          example: "6a34aa15f585c7dfc43336a4",
+        },
+      },
+    ],
+    responses: {
+      200: {
+        description: "Join requests fetched successfully",
+      },
+      403: {
+        description: "Only admin can view join requests",
+      },
+      404: {
+        description: "Community not found",
+      },
+    },
+  },
+},
 
   "/api/community/{communityId}/leave": {
     delete: {
@@ -153,6 +196,66 @@ export const communitySwaggerDocs = {
       },
     },
   },
+
+  "/api/community/{communityId}/join-requests/{userId}": {
+  patch: {
+    summary: "Accept or reject a join request (admin only)",
+    tags: ["Community"],
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "communityId",
+        in: "path",
+        required: true,
+        schema: {
+          type: "string",
+          example: "6a34aa15f585c7dfc43336a4",
+        },
+      },
+      {
+        name: "userId",
+        in: "path",
+        required: true,
+        schema: {
+          type: "string",
+          example: "687ab12345f585c7dfc43336",
+        },
+      },
+    ],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: {
+            type: "object",
+            required: ["action"],
+            properties: {
+              action: {
+                type: "string",
+                enum: ["accepted", "rejected"],
+                example: "accepted",
+              },
+            },
+          },
+        },
+      },
+    },
+    responses: {
+      200: {
+        description: "Request processed successfully",
+      },
+      400: {
+        description: "Invalid action",
+      },
+      403: {
+        description: "Only admin can accept/reject requests",
+      },
+      404: {
+        description: "Join request not found",
+      },
+    },
+  },
+},
 
   "/api/community/{communityId}/messages": {
     get: {

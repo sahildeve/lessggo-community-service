@@ -9,6 +9,8 @@ import {
   searchCommunities,
   getCommunityMessages,
   getMyCommunitites,
+  getJoinRequests,
+  respondToJoinRequest,
 } from "../controllers/community.controller.js";
 import {
   getNotifications,
@@ -19,9 +21,17 @@ const router = Router();
 
 // ─── Community Routes
 router.get("/search", protect, searchCommunities);
-router.get("/my-communities", protect, getMyCommunitites); 
-router.get("/notifications",       protect, getNotifications);      
+router.get("/my-communities", protect, getMyCommunitites);
+router.get("/notifications", protect, getNotifications);
 router.get("/notifications/count", protect, getNotificationCount);
+
+// Community join requests
+router.get("/:communityId/join-requests", protect, getJoinRequests);
+router.patch(
+  "/:communityId/join-requests/:userId",
+  protect,
+  respondToJoinRequest,
+);
 
 router.post("/", protect, createCommunity);
 router.get("/:communityId", protect, getCommunity);

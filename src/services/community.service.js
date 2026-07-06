@@ -48,7 +48,7 @@ export const joinCommunity = async (communityId, userId, username) => {
     throw err;
   }
 
-  // Check already member hai
+  // Already member check
   const alreadyMember = community.members.find(
     (m) => m.userId.toString() === userId,
   );
@@ -58,6 +58,27 @@ export const joinCommunity = async (communityId, userId, username) => {
     throw err;
   }
 
+  // ── Private community
+  if (community.isPrivate) {
+    const alreadyRequested = community.joinRequests.find(
+      (r) => r.userId.toString() === userId,
+    );
+    if (alreadyRequested) {
+      const err = new Error("Join request already sent");
+      err.status = 409;
+      throw err;
+    }
+
+    community.joinRequests.push({
+      userId,
+      username,
+      requestedAt: new Date(),
+    });
+    await community.save();
+    return { community, status: "pending" };
+  }
+
+  // ── Public community
   community.members.push({
     userId,
     username,
@@ -65,8 +86,60 @@ export const joinCommunity = async (communityId, userId, username) => {
     joinedAt: new Date(),
   });
   await community.save();
+  return { community, status: "active" };
+};
 
-  return community;
+// ---- Admin repondeToJoinRequest
+export const respondToJoinRequest = async (
+  communityId,
+  adminUserId,
+  requestUserId,
+  action,
+) => {
+  const community = await Community.findById(communityId);
+
+  if (!community) {
+    const err = new Error("Community not found");
+    err.status = 404;
+    throw err;
+  }
+
+  // Admin check
+  const admin = community.members.find(
+    (m) => m.userId.toString() === adminUserId && m.role === "admin",
+  );
+  if (!admin) {
+    const err = new Error("Only admin can accept/reject requests");
+    err.status = 403;
+    throw err;
+  }
+
+  // Request find karo
+  const requestIndex = community.joinRequests.findIndex(
+    (r) => r.userId.toString() === requestUserId,
+  );
+  if (requestIndex === -1) {
+    const err = new Error("Join request not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const request = community.joinRequests[requestIndex];
+
+  // Request remove karo
+  community.joinRequests.splice(requestIndex, 1);
+
+  if (action === "accepted") {
+    community.members.push({
+      userId: request.userId,
+      username: request.username,
+      role: "member",
+      joinedAt: new Date(),
+    });
+  }
+
+  await community.save();
+  return { community, action, requestUser: request };
 };
 
 // ─── Get MyCommunities (user jis communities me joined hai)

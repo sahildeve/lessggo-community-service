@@ -35,6 +35,13 @@ const initSocket = (httpServer) => {
   io.on("connection", (socket) => {
     logger.info(`User connected: ${socket.user.username}`);
 
+    // ─── Personal User Room
+    socket.join(`user:${socket.user.sub}`);
+
+    logger.info(
+      `${socket.user.username} joined personal room: user:${socket.user.sub}`,
+    );
+
     // ════════════════════════════════════════════════════════════════════════
     // LAYER 1 — Direct Chat
     // ════════════════════════════════════════════════════════════════════════
@@ -104,7 +111,6 @@ const initSocket = (httpServer) => {
       try {
         const community = await communityService.getCommunity(communityId);
 
-        // Check member hai
         const isMember = community.members.find(
           (m) => m.userId.toString() === socket.user.sub,
         );
@@ -117,17 +123,6 @@ const initSocket = (httpServer) => {
 
         socket.join(`community_${communityId}`);
         logger.info(`${socket.user.username} joined community: ${communityId}`);
-
-        // System message
-        const sysMsg = await communityService.saveSystemMessage(
-          communityId,
-          `${socket.user.username} joined the community`,
-        );
-
-        io.to(`community_${communityId}`).emit("community_system_message", {
-          message: sysMsg.message,
-          timestamp: sysMsg.createdAt,
-        });
       } catch (err) {
         logger.error("Join community error:", err.message);
         socket.emit("error", { message: err.message });
@@ -180,16 +175,6 @@ const initSocket = (httpServer) => {
       try {
         socket.leave(`community_${communityId}`);
         logger.info(`${socket.user.username} left community: ${communityId}`);
-
-        const sysMsg = await communityService.saveSystemMessage(
-          communityId,
-          `${socket.user.username} left the community`,
-        );
-
-        socket.to(`community_${communityId}`).emit("community_system_message", {
-          message: sysMsg.message,
-          timestamp: sysMsg.createdAt,
-        });
       } catch (err) {
         logger.error("Leave community error:", err.message);
       }

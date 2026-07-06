@@ -3,6 +3,7 @@ import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js"; 
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
+import Community from "../models/Community.js";
 
 
 // ─── Send Chat Request
@@ -92,10 +93,44 @@ export const getUserChats = async (req, res) => {
 // ─── Get Pending Requests — same
 export const getPendingRequests = async (req, res) => {
   try {
-    const requests = await directChatService.getPendingRequests(req.user.sub);
-    return success(res, { requests }, "Pending requests fetched");
+    // ─── Direct chat pending requests
+    const directRequests =
+      await directChatService.getPendingRequests(req.user.sub);
+
+    // ─── Community join requests
+    const communities = await Community.find({
+      "joinRequests.userId": req.user.sub,
+    })
+      .select("_id name joinRequests")
+      .lean();
+
+    const communityJoinRequests = communities.map((community) => {
+      const request = community.joinRequests.find(
+        (r) => r.userId.toString() === req.user.sub,
+      );
+
+      return {
+        type: "community_join",
+        communityId: community._id,
+        communityName: community.name,
+        requestedAt: request?.requestedAt,
+      };
+    });
+
+    return success(
+      res,
+      {
+        directRequests,
+        communityJoinRequests,
+      },
+      "Pending requests fetched",
+    );
   } catch (err) {
-    logger.error("Get pending requests error:", { message: err.message, stack: err.stack });
+    logger.error("Get pending requests error:", {
+      message: err.message,
+      stack: err.stack,
+    });
+
     return error(res, err.message, err.status || 500);
   }
 };

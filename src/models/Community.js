@@ -33,6 +33,19 @@ const communitySchema = new mongoose.Schema(
         username: { type: String },
         joinedAt: { type: Date, default: Date.now },
         role: { type: String, enum: ["admin", "member"], default: "member" },
+        status: {
+          type: String,
+          enum: ["active", "pending"],
+          default: "active",
+        },
+      },
+    ],
+    // ─── Join Requests (private community)
+    joinRequests: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        username: { type: String },
+        requestedAt: { type: Date, default: Date.now },
       },
     ],
 
