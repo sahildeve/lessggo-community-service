@@ -1,9 +1,9 @@
-import 'dotenv/config';
-import http       from 'http';
-import app        from './app.js';
-import connectDB  from './src/config/db.js';
-import initSocket from './src/socket.js';
-import logger     from './src/utils/logger.js';
+import "dotenv/config";
+import http from "http";
+import app from "./app.js";
+import connectDB from "./src/config/db.js";
+import initSocket from "./src/socket.js";
+import logger from "./src/utils/logger.js";
 
 const PORT = process.env.PORT || 3004;
 
@@ -12,7 +12,7 @@ const start = async () => {
     await connectDB();
 
     const httpServer = http.createServer(app);
-    const io         = initSocket(httpServer);
+    const io = initSocket(httpServer);
 
     httpServer.listen(PORT, () => {
       logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -21,19 +21,22 @@ const start = async () => {
       logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     });
   } catch (err) {
-    logger.error('Server startup error:', { message: err.message, stack: err.stack });
+    logger.error("Server startup error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     process.exit(1);
   }
 };
 
 start();
 
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection:', err.message);
+process.on("unhandledRejection", (err) => {
+  logger.error("Unhandled Rejection:", err.message);
   process.exit(1);
 });
 
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err.message);
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception:", err.message);
   process.exit(1);
 });
