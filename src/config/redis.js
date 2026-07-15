@@ -1,14 +1,19 @@
-import Redis from 'ioredis';
-import logger from '../utils/logger.js';
+import Redis from "ioredis";
+import logger from "../utils/logger.js";
 
 const redis = new Redis(process.env.REDIS_URL, {
-  maxRetriesPerRequest: 3,
-  retryStrategy: (times) => Math.min(times * 50, 2000),
-  lazyConnect: true,
+  maxRetriesPerRequest: null,
+  enableReadyCheck: true,
+
+  tls: {},
+
+  retryStrategy(times) {
+    return Math.min(times * 100, 3000);
+  },
 });
 
-redis.on('connect',      () => logger.info('Redis connected'));
-redis.on('error',        (err) => logger.error('Redis error:', err.message));
-redis.on('disconnected', () => logger.warn('Redis disconnected'));
+redis.on("connect", () => logger.info("Redis connected"));
+redis.on("ready", () => logger.info("Redis ready"));
+redis.on("error", (err) => logger.error(err.message));
 
 export default redis;
