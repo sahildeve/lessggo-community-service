@@ -228,3 +228,29 @@ export const getPendingRequests = async (userId) => {
 
   return requests;
 };
+
+// export const getRequestStatusWithUsers = async (currentUserId, otherUserIds) => {
+//   const chats = await DirectChat.find({
+//     $and: [
+//       { "participants.userId": currentUserId },
+//       { "participants.userId": { $in: otherUserIds } },
+//     ],
+//   }).lean();
+
+//   const statusMap = {};
+
+//   chats.forEach((chat) => {
+//     const other = chat.participants.find(
+//       (p) => p.userId.toString() !== currentUserId,
+//     );
+//     if (other) {
+//       statusMap[other.userId.toString()] = {
+//         chatId: chat._id,
+//         status: chat.status,
+//         requestedBy: chat.requestedBy.toString(),
+//       };
+//     }
+//   });
+
+//   return statusMap;
+// };

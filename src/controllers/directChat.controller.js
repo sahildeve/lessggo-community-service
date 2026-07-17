@@ -159,3 +159,27 @@ export const getPendingRequests = async (req, res) => {
     return error(res, err.message, err.status || 500);
   }
 };
+
+// ─── Get chat status with multiple users (for search/list screens)
+// export const getRequestStatusWithUsers = async (req, res) => {
+//   try {
+//     const { userIds } = req.body; // array of userIds
+
+//     if (!Array.isArray(userIds) || userIds.length === 0) {
+//       return error(res, "userIds array is required", 400);
+//     }
+
+//     const statusMap = await directChatService.getRequestStatusWithUsers(
+//       req.user.sub,
+//       userIds,
+//     );
+
+//     return success(res, { statusMap }, "Chat status fetched successfully");
+//   } catch (err) {
+//     logger.error("Get chat status error:", {
+//       message: err.message,
+//       stack: err.stack,
+//     });
+//     return error(res, err.message, err.status || 500);
+//   }
+// };
