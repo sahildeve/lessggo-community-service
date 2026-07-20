@@ -17,7 +17,7 @@ const communitySchema = new mongoose.Schema(
     city: {
       type: String,
       trim: true,
-      index: true,
+      // index: true,
     },
 
     // ─── Owner
