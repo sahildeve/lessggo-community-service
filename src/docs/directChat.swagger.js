@@ -99,6 +99,41 @@ export const directChatSwaggerDocs = {
     },
   },
 
+  "/api/direct-chat/{chatId}/withdraw": {
+  patch: {
+    summary: "Withdraw a pending request or leave an accepted chat",
+    tags: ["Direct Chat"],
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      {
+        name: "chatId",
+        in: "path",
+        required: true,
+        schema: { type: "string", example: "6a4b929a6b74ea5937310ea2" },
+      },
+    ],
+    responses: {
+      200: {
+        description: "Chat withdrawn successfully",
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              properties: {
+                success: { type: "boolean", example: true },
+                message: { type: "string", example: "Chat withdrawn successfully" },
+              },
+            },
+          },
+        },
+      },
+      403: { description: "You are not a participant of this chat" },
+      404: { description: "Chat not found" },
+      401: { description: "Unauthorized" },
+    },
+  },
+},
+
   "/api/direct-chat/pending-requests": {
     get: {
       summary: "Get all pending chat requests received by current user",

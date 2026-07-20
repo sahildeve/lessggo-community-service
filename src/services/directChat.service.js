@@ -229,28 +229,32 @@ export const getPendingRequests = async (userId) => {
   return requests;
 };
 
-// export const getRequestStatusWithUsers = async (currentUserId, otherUserIds) => {
-//   const chats = await DirectChat.find({
-//     $and: [
-//       { "participants.userId": currentUserId },
-//       { "participants.userId": { $in: otherUserIds } },
-//     ],
-//   }).lean();
+// ─── Withdraw Direct Chat Request
+export const withdrawDirectChatRequest = async (chatId, userId) => {
+  const chat = await DirectChat.findById(chatId);
 
-//   const statusMap = {};
+  if (!chat) {
+    const err = new Error("Chat not found");
+    err.status = 404;
+    throw err;
+  }
 
-//   chats.forEach((chat) => {
-//     const other = chat.participants.find(
-//       (p) => p.userId.toString() !== currentUserId,
-//     );
-//     if (other) {
-//       statusMap[other.userId.toString()] = {
-//         chatId: chat._id,
-//         status: chat.status,
-//         requestedBy: chat.requestedBy.toString(),
-//       };
-//     }
-//   });
+  const isParticipant = chat.participants.some(
+    (p) => p.userId.toString() === userId,
+  );
 
-//   return statusMap;
-// };
+  if (!isParticipant) {
+    const err = new Error("You are not a participant of this chat");
+    err.status = 403;
+    throw err;
+  }
+
+  const otherUser = chat.participants.find(
+    (p) => p.userId.toString() !== userId,
+  );
+
+  await DirectMessage.deleteMany({ chatId: chat._id });
+  await DirectChat.findByIdAndDelete(chatId);
+
+  return { otherUser };
+};

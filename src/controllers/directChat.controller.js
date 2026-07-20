@@ -19,6 +19,17 @@ export const sendChatRequest = async (req, res) => {
       requestMessage,
     );
 
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user:${toUserId}`).emit("direct_chat_request", {
+        chatId: chat._id,
+        fromUserId: req.user.sub,
+        fromUsername: req.user.fullName || req.user.username,
+        requestMessage,
+        message: `${req.user.fullName || req.user.username} sent you a chat request`,
+      });
+    }
+
     await createNotification({
       userId: toUserId,
       type: "direct_chat_request",
@@ -52,6 +63,21 @@ export const respondToChatRequest = async (req, res) => {
       req.user.sub,
       action,
     );
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(`user:${chat.requestedBy}`).emit(
+        action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
+        {
+          chatId: chat._id,
+          fromUsername: req.user.fullName || req.user.username,
+          message:
+            action === "accepted"
+              ? `${req.user.fullName || req.user.username} accepted your chat request`
+              : `${req.user.fullName || req.user.username} rejected your chat request`,
+        },
+      );
+    }
 
     await createNotification({
       userId: chat.requestedBy,
@@ -137,6 +163,7 @@ export const getPendingRequests = async (req, res) => {
       return {
         type: "community_join",
         communityId: community._id,
+        userId: req.user.sub,
         communityName: community.name,
         requestedAt: request?.requestedAt,
       };
@@ -160,26 +187,29 @@ export const getPendingRequests = async (req, res) => {
   }
 };
 
-// ─── Get chat status with multiple users (for search/list screens)
-// export const getRequestStatusWithUsers = async (req, res) => {
-//   try {
-//     const { userIds } = req.body; // array of userIds
+// ─── Withdraw Direct Chat Request
+export const withdrawDirectChatRequest = async (req, res) => {
+  try {
+    const { chatId } = req.params;
 
-//     if (!Array.isArray(userIds) || userIds.length === 0) {
-//       return error(res, "userIds array is required", 400);
-//     }
+    const { otherUser } = await directChatService.withdrawDirectChatRequest(
+      chatId,
+      req.user.sub,
+    );
 
-//     const statusMap = await directChatService.getRequestStatusWithUsers(
-//       req.user.sub,
-//       userIds,
-//     );
+    const io = req.app.get("io");
+    if (io && otherUser) {
+      io.to(`user:${otherUser.userId.toString()}`).emit("direct_chat_withdrawn", {
+        chatId,
+        byUserId: req.user.sub,
+        byUsername: req.user.fullName || req.user.username,
+        message: `${req.user.fullName || req.user.username} withdrew the chat`,
+      });
+    }
 
-//     return success(res, { statusMap }, "Chat status fetched successfully");
-//   } catch (err) {
-//     logger.error("Get chat status error:", {
-//       message: err.message,
-//       stack: err.stack,
-//     });
-//     return error(res, err.message, err.status || 500);
-//   }
-// };
+    return success(res, {}, "Chat withdrawn successfully");
+  } catch (err) {
+    logger.error("Withdraw direct chat error:", { message: err.message, stack: err.stack });
+    return error(res, err.message, err.status || 500);
+  }
+};

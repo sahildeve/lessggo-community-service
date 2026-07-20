@@ -132,7 +132,7 @@ export const respondToJoinRequest = async (req, res) => {
 
     const io = req.app.get("io");
 
-    // User ko realtime notify 
+    // User ko realtime notify
     if (io) {
       io.to(`user:${userId}`).emit(
         action === "accepted"
@@ -199,18 +199,25 @@ export const getJoinRequests = async (req, res) => {
 
     // Admin check
     const isAdmin = community.members.find(
-      (m) => m.userId.toString() === req.user.sub && m.role === "admin"
+      (m) => m.userId.toString() === req.user.sub && m.role === "admin",
     );
     if (!isAdmin) {
       return error(res, "Only admin can view join requests", 403);
     }
 
-    return success(res, {
-      joinRequests: community.joinRequests,
-      count: community.joinRequests.length
-    }, "Join requests fetched");
+    return success(
+      res,
+      {
+        joinRequests: community.joinRequests,
+        count: community.joinRequests.length,
+      },
+      "Join requests fetched",
+    );
   } catch (err) {
-    logger.error("Get join requests error:", { message: err.message, stack: err.stack });
+    logger.error("Get join requests error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -224,13 +231,11 @@ export const leaveCommunity = async (req, res) => {
       req.user.sub,
     );
 
-    // System message — sirf permanent leave pe
     await communityService.saveSystemMessage(
       communityId,
       `${req.user.fullName || req.user.username} left the community`,
     );
 
-    // Socket broadcast
     const io = req.app.get("io");
     if (io) {
       io.to(`community_${communityId}`).emit("community_system_message", {
@@ -239,10 +244,9 @@ export const leaveCommunity = async (req, res) => {
       });
     }
 
-    // Owner ko notification — agar owner khud nahi ja raha
-    if (community.createdBy.toString() !== req.user.sub) {
+    if (community.createdBy.userId.toString() !== req.user.sub) {
       await createNotification({
-        userId: community.createdBy,
+        userId: community.createdBy.userId,
         type: "leave_community",
         title: "Member Left",
         message: `${req.user.fullName || req.user.username} left your community "${community.name}"`,
