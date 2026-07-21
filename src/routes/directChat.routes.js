@@ -7,6 +7,7 @@ import {
   getUserChats,
   getPendingRequests,
   withdrawDirectChatRequest,
+  getUsersStatus,
 } from "../controllers/directChat.controller.js";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.get("/history/:chatId", protect, getChatHistory);
 router.get("/my-chats", protect, getUserChats);
 router.get("/pending-requests", protect, getPendingRequests);
 router.patch("/:chatId/withdraw", protect, withdrawDirectChatRequest);
+router.post("/users-status", protect, getUsersStatus);
 
 export default router;

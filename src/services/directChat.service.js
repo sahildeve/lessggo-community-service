@@ -258,3 +258,39 @@ export const withdrawDirectChatRequest = async (chatId, userId) => {
 
   return { otherUser };
 };
+
+// ─── Get all userIds jinke saath current user ka chat hai (accepted only)
+export const getDirectChatParticipantIds = async (userId) => {
+  const chats = await DirectChat.find({
+    "participants.userId": userId,
+    status: "accepted",
+  })
+    .select("participants")
+    .lean();
+
+  const participantIds = new Set();
+
+  chats.forEach((chat) => {
+    chat.participants.forEach((p) => {
+      if (p.userId.toString() !== userId) {
+        participantIds.add(p.userId.toString());
+      }
+    });
+  });
+
+  return Array.from(participantIds);
+};
+
+// ─── Get status of multiple users (from Redis)
+export const getUsersOnlineStatus = async (redis, userIds) => {
+  const statusMap = {};
+
+  for (const id of userIds) {
+    const raw = await redis.get(`user_status:${id}`);
+    statusMap[id] = raw
+      ? JSON.parse(raw)
+      : { status: "offline", lastSeenAt: null };
+  }
+
+  return statusMap;
+};

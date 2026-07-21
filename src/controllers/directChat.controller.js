@@ -4,6 +4,7 @@ import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import Community from "../models/Community.js";
+import redis from "../config/redis.js";
 
 // ─── Send Chat Request
 export const sendChatRequest = async (req, res) => {
@@ -144,22 +145,19 @@ export const getUserChats = async (req, res) => {
 export const getPendingRequests = async (req, res) => {
   try {
     // ─── Direct chat pending requests
-    const directRequests = await directChatService.getPendingRequests(
-      req.user.sub,
-    );
+    const directRequests = await directChatService.getPendingRequests(req.user.sub);
 
-    // ─── Community join requests
-    const communities = await Community.find({
+    // ─── Community join requests JO MAINE BHEJI (requester perspective)
+    const communitiesIRequested = await Community.find({
       "joinRequests.userId": req.user.sub,
     })
       .select("_id name joinRequests")
       .lean();
 
-    const communityJoinRequests = communities.map((community) => {
+    const communityJoinRequests = communitiesIRequested.map((community) => {
       const request = community.joinRequests.find(
         (r) => r.userId.toString() === req.user.sub,
       );
-
       return {
         type: "community_join",
         communityId: community._id,
@@ -169,20 +167,37 @@ export const getPendingRequests = async (req, res) => {
       };
     });
 
+    // ─── Community join requests JO MUJHE MILI (admin perspective) ← naya
+    const communitiesIAdmin = await Community.find({
+      "members.userId": req.user.sub,
+      "members.role": "admin",
+      "joinRequests.0": { $exists: true },   // sirf jahan pending requests hain
+    })
+      .select("_id name joinRequests")
+      .lean();
+
+    const receivedCommunityJoinRequests = communitiesIAdmin.flatMap((community) =>
+      community.joinRequests.map((r) => ({
+        type: "community_join",
+        communityId: community._id,
+        communityName: community.name,
+        userId: r.userId,
+        username: r.username,
+        requestedAt: r.requestedAt,
+      })),
+    );
+
     return success(
       res,
       {
         directRequests,
-        communityJoinRequests,
+        communityJoinRequests,             // jo maine bheji
+        receivedCommunityJoinRequests,     // ← jo mujhe milin (main admin hoon)
       },
       "Pending requests fetched",
     );
   } catch (err) {
-    logger.error("Get pending requests error:", {
-      message: err.message,
-      stack: err.stack,
-    });
-
+    logger.error("Get pending requests error:", { message: err.message, stack: err.stack });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -210,6 +225,24 @@ export const withdrawDirectChatRequest = async (req, res) => {
     return success(res, {}, "Chat withdrawn successfully");
   } catch (err) {
     logger.error("Withdraw direct chat error:", { message: err.message, stack: err.stack });
+    return error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── Get online/offline status of multiple users
+export const getUsersStatus = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      return error(res, "userIds array is required", 400);
+    }
+
+    const statusMap = await directChatService.getUsersOnlineStatus(redis, userIds);
+
+    return success(res, { statusMap }, "Status fetched successfully");
+  } catch (err) {
+    logger.error("Get users status error:", { message: err.message, stack: err.stack });
     return error(res, err.message, err.status || 500);
   }
 };
