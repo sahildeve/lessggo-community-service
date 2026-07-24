@@ -35,6 +35,7 @@ const notificationSchema = new mongoose.Schema(
         "community_join_request",
         "community_join_accepted",
         "community_join_rejected",
+        "community_deleted",
       ],
       required: true,
     },

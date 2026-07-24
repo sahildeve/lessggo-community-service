@@ -268,7 +268,31 @@ export const leaveCommunity = async (req, res) => {
 export const deleteCommunity = async (req, res) => {
   try {
     const { communityId } = req.params;
-    await communityService.deleteCommunity(communityId, req.user.sub);
+    const community = await communityService.deleteCommunity(communityId, req.user.sub);
+
+    const io = req.app.get("io");
+
+    // Sab members ko notify karo (creator ko chhod ke)
+    for (const member of community.members) {
+      if (member.userId.toString() === req.user.sub) continue;
+
+      if (io) {
+        io.to(`user:${member.userId.toString()}`).emit("community_deleted", {
+          communityId,
+          communityName: community.name,
+          message: `"${community.name}" has been deleted by the admin`,
+        });
+      }
+
+      await createNotification({
+        userId: member.userId,
+        type: "community_deleted",
+        title: "Community Deleted",
+        message: `"${community.name}" has been deleted by the admin`,
+        data: { communityId },
+      });
+    }
+
     return success(res, {}, "Community deleted successfully");
   } catch (err) {
     logger.error("Delete community error:", {

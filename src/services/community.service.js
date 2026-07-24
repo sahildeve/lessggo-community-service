@@ -199,7 +199,7 @@ export const deleteCommunity = async (communityId, userId) => {
   await CommunityMessage.deleteMany({ communityId });
   await Community.findByIdAndDelete(communityId);
 
-  return true;
+  return community;
 };
 
 // ─── Get Community
