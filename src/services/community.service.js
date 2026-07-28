@@ -177,7 +177,7 @@ export const leaveCommunity = async (communityId, userId) => {
   );
   await community.save();
 
-  return true;
+  return community;   
 };
 
 // ─── Delete Community (only owner)
