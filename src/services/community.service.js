@@ -152,7 +152,21 @@ export const getMyCommunitites = async (userId) => {
     .sort({ lastMessageAt: -1, createdAt: -1 })
     .lean();
 
-  return communities;
+  // ── Har community ke liye unread count
+  const communitiesWithUnread = await Promise.all(
+    communities.map(async (community) => {
+      const unreadCount = await CommunityMessage.countDocuments({
+        communityId: community._id,
+        senderId: { $ne: userId },
+        "seenBy.userId": { $ne: userId },
+        isDeleted: false,
+        messageType: "text",
+      });
+      return { ...community, unreadCount };
+    }),
+  );
+
+  return communitiesWithUnread;
 };
 
 // ─── Leave Community
@@ -177,7 +191,7 @@ export const leaveCommunity = async (communityId, userId) => {
   );
   await community.save();
 
-  return community;   
+  return community;
 };
 
 // ─── Delete Community (only owner)
@@ -351,4 +365,25 @@ export const saveSystemMessage = async (communityId, message) => {
     messageType: "system",
   });
   return msg;
+};
+
+// ─── Total unread count — communities
+export const getCommunityUnreadCount = async (userId) => {
+  const communities = await Community.find({
+    "members.userId": userId,
+  })
+    .select("_id")
+    .lean();
+
+  const communityIds = communities.map((c) => c._id);
+
+  const count = await CommunityMessage.countDocuments({
+    communityId: { $in: communityIds },
+    senderId: { $ne: userId },
+    "seenBy.userId": { $ne: userId },
+    isDeleted: false,
+    messageType: "text", // system messages count nahi karni
+  });
+
+  return count;
 };

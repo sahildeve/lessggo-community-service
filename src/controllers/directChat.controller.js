@@ -1,4 +1,5 @@
 import * as directChatService from "../services/directChat.service.js";
+import * as communityService from "../services/community.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js";
@@ -145,7 +146,9 @@ export const getUserChats = async (req, res) => {
 export const getPendingRequests = async (req, res) => {
   try {
     // ─── Direct chat pending requests
-    const directRequests = await directChatService.getPendingRequests(req.user.sub);
+    const directRequests = await directChatService.getPendingRequests(
+      req.user.sub,
+    );
 
     // ─── Community join requests JO MAINE BHEJI (requester perspective)
     const communitiesIRequested = await Community.find({
@@ -171,33 +174,37 @@ export const getPendingRequests = async (req, res) => {
     const communitiesIAdmin = await Community.find({
       "members.userId": req.user.sub,
       "members.role": "admin",
-      "joinRequests.0": { $exists: true },   // sirf jahan pending requests hain
+      "joinRequests.0": { $exists: true }, // sirf jahan pending requests hain
     })
       .select("_id name joinRequests")
       .lean();
 
-    const receivedCommunityJoinRequests = communitiesIAdmin.flatMap((community) =>
-      community.joinRequests.map((r) => ({
-        type: "community_join",
-        communityId: community._id,
-        communityName: community.name,
-        userId: r.userId,
-        username: r.username,
-        requestedAt: r.requestedAt,
-      })),
+    const receivedCommunityJoinRequests = communitiesIAdmin.flatMap(
+      (community) =>
+        community.joinRequests.map((r) => ({
+          type: "community_join",
+          communityId: community._id,
+          communityName: community.name,
+          userId: r.userId,
+          username: r.username,
+          requestedAt: r.requestedAt,
+        })),
     );
 
     return success(
       res,
       {
         directRequests,
-        communityJoinRequests,             // jo maine bheji
-        receivedCommunityJoinRequests,     // ← jo mujhe milin (main admin hoon)
+        communityJoinRequests, // jo maine bheji
+        receivedCommunityJoinRequests, // ← jo mujhe milin (main admin hoon)
       },
       "Pending requests fetched",
     );
   } catch (err) {
-    logger.error("Get pending requests error:", { message: err.message, stack: err.stack });
+    logger.error("Get pending requests error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -214,17 +221,23 @@ export const withdrawDirectChatRequest = async (req, res) => {
 
     const io = req.app.get("io");
     if (io && otherUser) {
-      io.to(`user:${otherUser.userId.toString()}`).emit("direct_chat_withdrawn", {
-        chatId,
-        byUserId: req.user.sub,
-        byUsername: req.user.fullName || req.user.username,
-        message: `${req.user.fullName || req.user.username} withdrew the chat`,
-      });
+      io.to(`user:${otherUser.userId.toString()}`).emit(
+        "direct_chat_withdrawn",
+        {
+          chatId,
+          byUserId: req.user.sub,
+          byUsername: req.user.fullName || req.user.username,
+          message: `${req.user.fullName || req.user.username} withdrew the chat`,
+        },
+      );
     }
 
     return success(res, {}, "Chat withdrawn successfully");
   } catch (err) {
-    logger.error("Withdraw direct chat error:", { message: err.message, stack: err.stack });
+    logger.error("Withdraw direct chat error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -238,11 +251,43 @@ export const getUsersStatus = async (req, res) => {
       return error(res, "userIds array is required", 400);
     }
 
-    const statusMap = await directChatService.getUsersOnlineStatus(redis, userIds);
+    const statusMap = await directChatService.getUsersOnlineStatus(
+      redis,
+      userIds,
+    );
 
     return success(res, { statusMap }, "Status fetched successfully");
   } catch (err) {
-    logger.error("Get users status error:", { message: err.message, stack: err.stack });
+    logger.error("Get users status error:", {
+      message: err.message,
+      stack: err.stack,
+    });
+    return error(res, err.message, err.status || 500);
+  }
+};
+
+// ─── Get total unread count (direct + community combined)
+export const getUnreadCount = async (req, res) => {
+  try {
+    const [directCount, communityCount] = await Promise.all([
+      directChatService.getDirectUnreadCount(req.user.sub),
+      communityService.getCommunityUnreadCount(req.user.sub),
+    ]);
+
+    return success(
+      res,
+      {
+        directUnread: directCount,
+        communityUnread: communityCount,
+        totalUnread: directCount + communityCount,
+      },
+      "Unread count fetched successfully",
+    );
+  } catch (err) {
+    logger.error("Get unread count error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };

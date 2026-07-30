@@ -215,7 +215,20 @@ export const getUserChats = async (userId) => {
     .sort({ lastMessageAt: -1 })
     .lean();
 
-  return chats;
+  // ── Har chat ke liye unread count nikalo 
+  const chatsWithUnread = await Promise.all(
+    chats.map(async (chat) => {
+      const unreadCount = await DirectMessage.countDocuments({
+        chatId: chat._id,
+        senderId: { $ne: userId },
+        "seenBy.userId": { $ne: userId },
+        isDeleted: false,
+      });
+      return { ...chat, unreadCount };
+    }),
+  );
+
+  return chatsWithUnread;
 };
 
 // ─── Get Pending Requests
@@ -293,4 +306,25 @@ export const getUsersOnlineStatus = async (redis, userIds) => {
   }
 
   return statusMap;
+};
+
+// ─── Total unread count — direct chats
+export const getDirectUnreadCount = async (userId) => {
+  const chats = await DirectChat.find({
+    "participants.userId": userId,
+    status: "accepted",
+  })
+    .select("_id")
+    .lean();
+
+  const chatIds = chats.map((c) => c._id);
+
+  const count = await DirectMessage.countDocuments({
+    chatId: { $in: chatIds },
+    senderId: { $ne: userId },
+    "seenBy.userId": { $ne: userId },
+    isDeleted: false,
+  });
+
+  return count;
 };

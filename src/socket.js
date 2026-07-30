@@ -37,7 +37,6 @@ const initSocket = (httpServer) => {
 
     const userId = socket.user.sub;
 
-    // ─── Online status — try/catch mein wrap karo taaki fail hone par
     try {
       await redis.set(
         `user_status:${userId}`,
@@ -56,10 +55,8 @@ const initSocket = (httpServer) => {
       }
     } catch (err) {
       logger.error("Online status setup error:", err.message);
-      // yahan crash nahi hoga — listeners neeche register hote rahenge
     }
 
-    // ─── On-demand status check
     socket.on("get_user_status", async (targetUserId) => {
       try {
         const raw = await redis.get(`user_status:${targetUserId}`);
@@ -73,12 +70,13 @@ const initSocket = (httpServer) => {
     });
 
     // ════════════════════════════════════════════════════════════
-    // LAYER 1 — Direct Chat (same as before)
+    // LAYER 1 — Direct Chat
     // ════════════════════════════════════════════════════════════
 
     socket.on("join_direct_chat", async (chatId) => {
       try {
         socket.join(`direct_${chatId}`);
+        await directChatService.markDirectChatAsRead(chatId, userId); 
         logger.info(`${socket.user.username} joined direct chat: ${chatId}`);
       } catch (err) {
         socket.emit("error", { message: err.message });
@@ -128,7 +126,7 @@ const initSocket = (httpServer) => {
     });
 
     // ════════════════════════════════════════════════════════════
-    // LAYER 2 — Community Chat (same as before)
+    // LAYER 2 — Community Chat
     // ════════════════════════════════════════════════════════════
 
     socket.on("join_community", async (communityId) => {
@@ -144,6 +142,7 @@ const initSocket = (httpServer) => {
           return;
         }
         socket.join(`community_${communityId}`);
+        await communityService.markCommunityChatAsRead(communityId, userId); 
         logger.info(`${socket.user.username} joined community: ${communityId}`);
       } catch (err) {
         logger.error("Join community error:", err.message);
@@ -198,7 +197,6 @@ const initSocket = (httpServer) => {
       }
     });
 
-    // ─── Disconnect — multi-device safe
     socket.on("disconnect", async () => {
       try {
         const activeSockets = await io.in(`user:${userId}`).fetchSockets();

@@ -104,6 +104,7 @@ export const directChatSwaggerDocs = {
     get: {
       summary: "Get all chats of current user",
       tags: ["Direct Chat"],
+      unreadCount: { type: "integer", example: 2 },
       security: [{ bearerAuth: [] }],
       responses: {
         200: { description: "Chats fetched successfully" },
@@ -209,6 +210,38 @@ export const directChatSwaggerDocs = {
           },
         },
         400: { description: "userIds array is required" },
+        401: { description: "Unauthorized" },
+      },
+    },
+  },
+
+  "/api/direct-chat/unread-count": {
+    get: {
+      summary: "Get total unread message count (direct + community combined)",
+      tags: ["Direct Chat"],
+      security: [{ bearerAuth: [] }],
+      responses: {
+        200: {
+          description: "Unread count fetched successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", example: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      directUnread: { type: "integer", example: 5 },
+                      communityUnread: { type: "integer", example: 3 },
+                      totalUnread: { type: "integer", example: 8 },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         401: { description: "Unauthorized" },
       },
     },

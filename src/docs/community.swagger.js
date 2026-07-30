@@ -36,6 +36,7 @@ export const communitySwaggerDocs = {
     get: {
       summary: "Get all communities joined by current user",
       tags: ["Community"],
+      unreadCount: { type: "integer", example: 2 },
       security: [{ bearerAuth: [] }],
       responses: {
         200: { description: "My communities fetched successfully" },

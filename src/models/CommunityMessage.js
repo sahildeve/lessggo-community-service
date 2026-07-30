@@ -28,6 +28,12 @@ const communityMessageSchema = new mongoose.Schema(
       default: "text",
     },
     isDeleted: { type: Boolean, default: false },
+    seenBy: [
+      {
+        userId: { type: mongoose.Schema.Types.ObjectId },
+        seenAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   { timestamps: true },
 );
