@@ -387,3 +387,17 @@ export const getCommunityUnreadCount = async (userId) => {
 
   return count;
 };
+
+// ─── Mark all unread messages in a community as seen by user
+export const markCommunityChatAsRead = async (communityId, userId) => {
+  await CommunityMessage.updateMany(
+    {
+      communityId,
+      senderId: { $ne: userId },
+      "seenBy.userId": { $ne: userId },
+    },
+    {
+      $push: { seenBy: { userId, seenAt: new Date() } },
+    },
+  );
+};

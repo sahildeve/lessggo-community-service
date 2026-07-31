@@ -328,3 +328,17 @@ export const getDirectUnreadCount = async (userId) => {
 
   return count;
 };
+
+// ─── Mark all unread messages in a chat as seen by user
+export const markDirectChatAsRead = async (chatId, userId) => {
+  await DirectMessage.updateMany(
+    {
+      chatId,
+      senderId: { $ne: userId },
+      "seenBy.userId": { $ne: userId },
+    },
+    {
+      $push: { seenBy: { userId, seenAt: new Date() } },
+    },
+  );
+};
