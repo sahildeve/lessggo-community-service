@@ -76,7 +76,7 @@ const initSocket = (httpServer) => {
     socket.on("join_direct_chat", async (chatId) => {
       try {
         socket.join(`direct_${chatId}`);
-        await directChatService.markDirectChatAsRead(chatId, userId); 
+        await directChatService.markDirectChatAsRead(chatId, userId);
         logger.info(`${socket.user.username} joined direct chat: ${chatId}`);
       } catch (err) {
         socket.emit("error", { message: err.message });
@@ -106,6 +106,14 @@ const initSocket = (httpServer) => {
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
+
+        // ── Jo log abhi chat room me hain, unke liye turant seen mark karo
+        const socketsInRoom = await io.in(`direct_${chatId}`).fetchSockets();
+        for (const s of socketsInRoom) {
+          if (s.user.sub !== socket.user.sub) {
+            await directChatService.markDirectChatAsRead(chatId, s.user.sub);
+          }
+        }
       } catch (err) {
         logger.error("Send direct message error:", err.message);
         socket.emit("error", { message: err.message });
@@ -142,7 +150,7 @@ const initSocket = (httpServer) => {
           return;
         }
         socket.join(`community_${communityId}`);
-        await communityService.markCommunityChatAsRead(communityId, userId); 
+        await communityService.markCommunityChatAsRead(communityId, userId);
         logger.info(`${socket.user.username} joined community: ${communityId}`);
       } catch (err) {
         logger.error("Join community error:", err.message);
@@ -173,6 +181,19 @@ const initSocket = (httpServer) => {
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
+
+        // ── Jo log abhi community room me hain, unke liye turant seen mark karo
+        const socketsInRoom = await io
+          .in(`community_${communityId}`)
+          .fetchSockets();
+        for (const s of socketsInRoom) {
+          if (s.user.sub !== socket.user.sub) {
+            await communityService.markCommunityChatAsRead(
+              communityId,
+              s.user.sub,
+            );
+          }
+        }
       } catch (err) {
         logger.error("Send community message error:", err.message);
         socket.emit("error", { message: err.message });

@@ -34,6 +34,8 @@ const directMessageSchema = new mongoose.Schema(
 );
 
 directMessageSchema.index({ chatId: 1, createdAt: -1 });
+// Unread count queries ke liye
+directMessageSchema.index({ chatId: 1, senderId: 1, "seenBy.userId": 1 });
 
 const DirectMessage = mongoose.model("DirectMessage", directMessageSchema);
 export default DirectMessage;

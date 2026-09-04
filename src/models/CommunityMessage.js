@@ -39,6 +39,12 @@ const communityMessageSchema = new mongoose.Schema(
 );
 
 communityMessageSchema.index({ communityId: 1, createdAt: -1 });
+// Unread count queries ke liye
+communityMessageSchema.index({
+  communityId: 1,
+  senderId: 1,
+  "seenBy.userId": 1,
+});
 
 const CommunityMessage = mongoose.model(
   "CommunityMessage",

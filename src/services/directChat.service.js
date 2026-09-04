@@ -181,6 +181,11 @@ export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
     throw err;
   }
 
+  // ── History khulte hi messages seen mark karo (page 1 par hi)
+  if (page === 1) {
+    await markDirectChatAsRead(chatId, userId);
+  }
+
   const skip = (page - 1) * limit;
   const messages = await DirectMessage.find({ chatId, isDeleted: false })
     .sort({ createdAt: -1 })
@@ -215,7 +220,7 @@ export const getUserChats = async (userId) => {
     .sort({ lastMessageAt: -1 })
     .lean();
 
-  // ── Har chat ke liye unread count nikalo 
+  // ── Har chat ke liye unread count nikalo
   const chatsWithUnread = await Promise.all(
     chats.map(async (chat) => {
       const unreadCount = await DirectMessage.countDocuments({
@@ -308,7 +313,7 @@ export const getUsersOnlineStatus = async (redis, userIds) => {
   return statusMap;
 };
 
-// ─── Total unread count — direct chats
+// ─── Unread count — kitni chats me unread messages hain (messages nahi, chats)
 export const getDirectUnreadCount = async (userId) => {
   const chats = await DirectChat.find({
     "participants.userId": userId,
@@ -318,15 +323,16 @@ export const getDirectUnreadCount = async (userId) => {
     .lean();
 
   const chatIds = chats.map((c) => c._id);
+  if (!chatIds.length) return 0;
 
-  const count = await DirectMessage.countDocuments({
+  const chatsWithUnread = await DirectMessage.distinct("chatId", {
     chatId: { $in: chatIds },
     senderId: { $ne: userId },
     "seenBy.userId": { $ne: userId },
     isDeleted: false,
   });
 
-  return count;
+  return chatsWithUnread.length;
 };
 
 // ─── Mark all unread messages in a chat as seen by user
@@ -336,9 +342,10 @@ export const markDirectChatAsRead = async (chatId, userId) => {
       chatId,
       senderId: { $ne: userId },
       "seenBy.userId": { $ne: userId },
+      isDeleted: false,
     },
     {
-      $push: { seenBy: { userId, seenAt: new Date() } },
+      $addToSet: { seenBy: { userId, seenAt: new Date() } },
     },
   );
 };

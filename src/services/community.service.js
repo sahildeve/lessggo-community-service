@@ -328,6 +328,11 @@ export const getCommunityMessages = async (
     throw err;
   }
 
+  // ── Messages khulte hi seen mark karo (page 1 par hi)
+  if (page === 1) {
+    await markCommunityChatAsRead(communityId, userId);
+  }
+
   const skip = (page - 1) * limit;
   const messages = await CommunityMessage.find({
     communityId,
@@ -367,7 +372,7 @@ export const saveSystemMessage = async (communityId, message) => {
   return msg;
 };
 
-// ─── Total unread count — communities
+// ─── Unread count — kitni communities me unread hain (messages nahi)
 export const getCommunityUnreadCount = async (userId) => {
   const communities = await Community.find({
     "members.userId": userId,
@@ -376,16 +381,17 @@ export const getCommunityUnreadCount = async (userId) => {
     .lean();
 
   const communityIds = communities.map((c) => c._id);
+  if (!communityIds.length) return 0;
 
-  const count = await CommunityMessage.countDocuments({
+  const withUnread = await CommunityMessage.distinct("communityId", {
     communityId: { $in: communityIds },
     senderId: { $ne: userId },
     "seenBy.userId": { $ne: userId },
     isDeleted: false,
-    messageType: "text", // system messages count nahi karni
+    messageType: "text",
   });
 
-  return count;
+  return withUnread.length;
 };
 
 // ─── Mark all unread messages in a community as seen by user
@@ -395,9 +401,11 @@ export const markCommunityChatAsRead = async (communityId, userId) => {
       communityId,
       senderId: { $ne: userId },
       "seenBy.userId": { $ne: userId },
+      isDeleted: false,
+      messageType: "text",
     },
     {
-      $push: { seenBy: { userId, seenAt: new Date() } },
+      $addToSet: { seenBy: { userId, seenAt: new Date() } },
     },
   );
 };
