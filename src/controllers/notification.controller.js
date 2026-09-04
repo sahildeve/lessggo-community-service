@@ -45,7 +45,7 @@ export const getNotificationCount = async (req, res) => {
 
     return success(
       res,
-      { count: count || 5 },
+      { count: count },
       "Notification count fetched",
     );
   } catch (err) {
