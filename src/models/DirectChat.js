@@ -6,7 +6,7 @@ const directChatSchema = new mongoose.Schema(
     participants: [
       {
         userId: { type: mongoose.Schema.Types.ObjectId, required: true },
-        username: { type: String, required: true },
+        username: { type: String, default: null },
         fullName: {
           type: String,
           default: null,

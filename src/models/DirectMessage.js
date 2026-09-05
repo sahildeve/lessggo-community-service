@@ -14,7 +14,7 @@ const directMessageSchema = new mongoose.Schema(
     },
     senderUsername: {
       type: String,
-      required: true,
+      default: null,
     },
     message: {
       type: String,

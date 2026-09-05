@@ -2,13 +2,14 @@ import * as communityService from "../services/community.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js";
+import { getDisplayName } from "../utils/displayName.js";
 
 // ─── Create Community
 export const createCommunity = async (req, res) => {
   try {
     const community = await communityService.createCommunity(
       req.user.sub,
-      req.user.username,
+      getDisplayName(req.user),
       req.body,
     );
     return success(res, { community }, "Community created successfully", 201);
@@ -42,7 +43,7 @@ export const joinCommunity = async (req, res) => {
     const { community, status } = await communityService.joinCommunity(
       communityId,
       req.user.sub,
-      req.user.fullName || req.user.username,
+      getDisplayName(req.user),
     );
 
     const io = req.app.get("io");
@@ -56,8 +57,8 @@ export const joinCommunity = async (req, res) => {
             communityId,
             communityName: community.name,
             userId: req.user.sub,
-            username: req.user.fullName || req.user.username,
-            message: `${req.user.fullName || req.user.username} wants to join your community`,
+            username: getDisplayName(req.user),
+            message: `${getDisplayName(req.user)} wants to join your community`,
           },
         );
       }
@@ -66,7 +67,7 @@ export const joinCommunity = async (req, res) => {
         userId: community.createdBy.userId,
         type: "community_join_request",
         title: "New Join Request",
-        message: `${req.user.fullName || req.user.username} wants to join "${community.name}"`,
+        message: `${getDisplayName(req.user)} wants to join "${community.name}"`,
         data: { communityId, userId: req.user.sub },
       });
 
@@ -80,12 +81,12 @@ export const joinCommunity = async (req, res) => {
     // Public — seedha join
     await communityService.saveSystemMessage(
       communityId,
-      `${req.user.fullName || req.user.username} joined the community`,
+      `${getDisplayName(req.user)} joined the community`,
     );
 
     if (io) {
       io.to(`community_${communityId}`).emit("community_system_message", {
-        message: `${req.user.fullName || req.user.username} joined the community`,
+        message: `${getDisplayName(req.user)} joined the community`,
         timestamp: new Date(),
       });
     }
@@ -94,7 +95,7 @@ export const joinCommunity = async (req, res) => {
       userId: community.createdBy.userId,
       type: "join_community",
       title: "New Member Joined",
-      message: `${req.user.fullName || req.user.username} joined "${community.name}"`,
+      message: `${getDisplayName(req.user)} joined "${community.name}"`,
       data: { communityId, userId: req.user.sub },
     });
 
@@ -233,13 +234,13 @@ export const leaveCommunity = async (req, res) => {
 
     await communityService.saveSystemMessage(
       communityId,
-      `${req.user.fullName || req.user.username} left the community`,
+      `${getDisplayName(req.user)} left the community`,
     );
 
     const io = req.app.get("io");
     if (io) {
       io.to(`community_${communityId}`).emit("community_system_message", {
-        message: `${req.user.fullName || req.user.username} left the community`,
+        message: `${getDisplayName(req.user)} left the community`,
         timestamp: new Date(),
       });
     }
@@ -249,7 +250,7 @@ export const leaveCommunity = async (req, res) => {
         userId: community.createdBy.userId,
         type: "leave_community",
         title: "Member Left",
-        message: `${req.user.fullName || req.user.username} left your community "${community.name}"`,
+        message: `${getDisplayName(req.user)} left your community "${community.name}"`,
         data: { communityId, userId: req.user.sub },
       });
     }
@@ -268,7 +269,10 @@ export const leaveCommunity = async (req, res) => {
 export const deleteCommunity = async (req, res) => {
   try {
     const { communityId } = req.params;
-    const community = await communityService.deleteCommunity(communityId, req.user.sub);
+    const community = await communityService.deleteCommunity(
+      communityId,
+      req.user.sub,
+    );
 
     const io = req.app.get("io");
 

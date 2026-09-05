@@ -4,6 +4,7 @@ import * as directChatService from "./services/directChat.service.js";
 import * as communityService from "./services/community.service.js";
 import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
+import { getDisplayName } from "./utils/displayName.js";
 
 const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
@@ -32,7 +33,7 @@ const initSocket = (httpServer) => {
   });
 
   io.on("connection", async (socket) => {
-    logger.info(`User connected: ${socket.user.username}`);
+    logger.info(`User connected: ${getDisplayName(socket.user)}`);
     socket.join(`user:${socket.user.sub}`);
 
     const userId = socket.user.sub;
@@ -77,7 +78,7 @@ const initSocket = (httpServer) => {
       try {
         socket.join(`direct_${chatId}`);
         await directChatService.markDirectChatAsRead(chatId, userId);
-        logger.info(`${socket.user.username} joined direct chat: ${chatId}`);
+        logger.info(`${getDisplayName(socket.user)} joined direct chat: ${chatId}`);
       } catch (err) {
         socket.emit("error", { message: err.message });
       }
@@ -94,7 +95,7 @@ const initSocket = (httpServer) => {
         const savedMsg = await directChatService.sendMessage(
           chatId,
           socket.user.sub,
-          socket.user.username,
+          getDisplayName(socket.user),
           message.trim(),
         );
 
@@ -102,7 +103,7 @@ const initSocket = (httpServer) => {
           messageId: savedMsg._id,
           chatId,
           senderId: socket.user.sub,
-          senderUsername: socket.user.username,
+          senderUsername: getDisplayName(socket.user),
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
@@ -123,14 +124,14 @@ const initSocket = (httpServer) => {
     socket.on("direct_typing", ({ chatId, isTyping }) => {
       socket.to(`direct_${chatId}`).emit("direct_user_typing", {
         userId: socket.user.sub,
-        username: socket.user.username,
+        username: getDisplayName(socket.user),
         isTyping,
       });
     });
 
     socket.on("leave_direct_chat", (chatId) => {
       socket.leave(`direct_${chatId}`);
-      logger.info(`${socket.user.username} left direct chat: ${chatId}`);
+      logger.info(`${getDisplayName(socket.user)} left direct chat: ${chatId}`);
     });
 
     // ════════════════════════════════════════════════════════════
@@ -151,7 +152,7 @@ const initSocket = (httpServer) => {
         }
         socket.join(`community_${communityId}`);
         await communityService.markCommunityChatAsRead(communityId, userId);
-        logger.info(`${socket.user.username} joined community: ${communityId}`);
+        logger.info(`${getDisplayName(socket.user)} joined community: ${communityId}`);
       } catch (err) {
         logger.error("Join community error:", err.message);
         socket.emit("error", { message: err.message });
@@ -169,7 +170,7 @@ const initSocket = (httpServer) => {
         const savedMsg = await communityService.sendMessage(
           communityId,
           socket.user.sub,
-          socket.user.username,
+          getDisplayName(socket.user),
           message.trim(),
         );
 
@@ -177,7 +178,7 @@ const initSocket = (httpServer) => {
           messageId: savedMsg._id,
           communityId,
           senderId: socket.user.sub,
-          senderUsername: socket.user.username,
+          senderUsername: getDisplayName(socket.user),
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
@@ -204,7 +205,7 @@ const initSocket = (httpServer) => {
       socket.to(`community_${communityId}`).emit("community_user_typing", {
         communityId,
         userId: socket.user.sub,
-        username: socket.user.username,
+        username: getDisplayName(socket.user),
         isTyping,
       });
     });
@@ -212,7 +213,7 @@ const initSocket = (httpServer) => {
     socket.on("leave_community", async (communityId) => {
       try {
         socket.leave(`community_${communityId}`);
-        logger.info(`${socket.user.username} left community: ${communityId}`);
+        logger.info(`${getDisplayName(socket.user)} left community: ${communityId}`);
       } catch (err) {
         logger.error("Leave community error:", err.message);
       }
@@ -224,7 +225,7 @@ const initSocket = (httpServer) => {
 
         if (activeSockets.length > 0) {
           logger.info(
-            `${socket.user.username} still has ${activeSockets.length} active socket(s)`,
+            `${getDisplayName(socket.user)} still has ${activeSockets.length} active socket(s)`,
           );
           return;
         }
@@ -250,7 +251,7 @@ const initSocket = (httpServer) => {
           });
         }
 
-        logger.info(`User disconnected: ${socket.user.username}`);
+        logger.info(`User disconnected: ${getDisplayName(socket.user)}`);
       } catch (err) {
         logger.error("Disconnect presence error:", err.message);
       }

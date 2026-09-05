@@ -5,6 +5,7 @@ import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import Community from "../models/Community.js";
+import { getDisplayName } from "../utils/displayName.js";
 import redis from "../config/redis.js";
 
 // ─── Send Chat Request
@@ -13,11 +14,11 @@ export const sendChatRequest = async (req, res) => {
     const { toUserId, toUsername, requestMessage } = req.body;
     const chat = await directChatService.sendChatRequest(
       req.user.sub,
-      req.user.username,
-      req.user.fullName || req.user.username, // sender fullName
+      getDisplayName(req.user),
+      getDisplayName(req.user), // sender fullName
       toUserId,
-      toUsername,
-      req.body.toFullName || toUsername, // receiver fullName
+      toUsername || null,
+      req.body.toFullName || toUsername || null, // receiver fullName
       requestMessage,
     );
 
@@ -26,9 +27,9 @@ export const sendChatRequest = async (req, res) => {
       io.to(`user:${toUserId}`).emit("direct_chat_request", {
         chatId: chat._id,
         fromUserId: req.user.sub,
-        fromUsername: req.user.fullName || req.user.username,
+        fromUsername: getDisplayName(req.user),
         requestMessage,
-        message: `${req.user.fullName || req.user.username} sent you a chat request`,
+        message: `${getDisplayName(req.user)} sent you a chat request`,
       });
     }
 
@@ -36,14 +37,11 @@ export const sendChatRequest = async (req, res) => {
       userId: toUserId,
       type: "direct_chat_request",
       title: "New Chat Request",
-      message: `${req.user.fullName || req.user.username} wants to chat with you`,
+      message: `${getDisplayName(req.user)} wants to chat with you`,
       data: { chatId: chat._id, fromUserId: req.user.sub },
     });
 
-    await sendChatRequestEmail(
-      toUserId,
-      req.user.fullName || req.user.username,
-    );
+    await sendChatRequestEmail(toUserId, getDisplayName(req.user));
 
     return success(res, { chat }, "Chat request sent successfully", 201);
   } catch (err) {
@@ -54,7 +52,6 @@ export const sendChatRequest = async (req, res) => {
     return error(res, err.message, err.status || 500);
   }
 };
-
 // ─── Respond to Chat Request
 export const respondToChatRequest = async (req, res) => {
   try {
@@ -72,11 +69,11 @@ export const respondToChatRequest = async (req, res) => {
         action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
         {
           chatId: chat._id,
-          fromUsername: req.user.fullName || req.user.username,
+          fromUsername: getDisplayName(req.user),
           message:
             action === "accepted"
-              ? `${req.user.fullName || req.user.username} accepted your chat request`
-              : `${req.user.fullName || req.user.username} rejected your chat request`,
+              ? `${getDisplayName(req.user)} accepted your chat request`
+              : `${getDisplayName(req.user)} rejected your chat request`,
         },
       );
     }
@@ -91,8 +88,8 @@ export const respondToChatRequest = async (req, res) => {
           : "Chat Request Rejected",
       message:
         action === "accepted"
-          ? `${req.user.fullName || req.user.username} accepted your chat request`
-          : `${req.user.fullName || req.user.username} rejected your chat request`,
+          ? `${getDisplayName(req.user)} accepted your chat request`
+          : `${getDisplayName(req.user)} rejected your chat request`,
       data: { chatId: chat._id },
     });
 
@@ -226,8 +223,8 @@ export const withdrawDirectChatRequest = async (req, res) => {
         {
           chatId,
           byUserId: req.user.sub,
-          byUsername: req.user.fullName || req.user.username,
-          message: `${req.user.fullName || req.user.username} withdrew the chat`,
+          byUsername: getDisplayName(req.user),
+          message: `${getDisplayName(req.user)} withdrew the chat`,
         },
       );
     }
