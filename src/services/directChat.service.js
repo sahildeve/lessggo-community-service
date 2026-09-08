@@ -1,5 +1,6 @@
 import DirectChat from "../models/DirectChat.js";
 import DirectMessage from "../models/DirectMessage.js";
+import { getUsersByIds } from "../utils/authServiceClient.js";
 import logger from "../utils/logger.js";
 
 // ─── Send Chat Request
@@ -13,12 +14,22 @@ export const sendChatRequest = async (
   requestMessage,
 ) => {
   // ─── Check: Apne aap ko request nahi bhej sakte
-
   if (requestedBy === toUserId) {
     const err = new Error("You cannot send a request to yourself");
     err.status = 400;
     throw err;
   }
+
+  // ── Dono ke naam auth service se — JWT/frontend par bharosa nahi
+  const userInfoMap = await getUsersByIds([requestedBy, toUserId]);
+  const sender = userInfoMap[String(requestedBy)];
+  const receiver = userInfoMap[String(toUserId)];
+
+  const finalFromUsername = sender?.username ?? null;
+  const finalFromFullName = sender?.fullName ?? requestedByFullName ?? null;
+
+  const finalToUsername = receiver?.username ?? toUsername ?? null;
+  const finalToFullName = receiver?.fullName ?? toFullName ?? null;
 
   // Check karo pehle se request hai ya nahi
   const existing = await DirectChat.findOne({
@@ -45,13 +56,13 @@ export const sendChatRequest = async (
       existing.participants = [
         {
           userId: requestedBy,
-          username: requestedByUsername,
-          fullName: requestedByFullName,
+          username: finalFromUsername,
+          fullName: finalFromFullName,
         },
         {
           userId: toUserId,
-          username: toUsername,
-          fullName: toFullName,
+          username: finalToUsername,
+          fullName: finalToFullName,
         },
       ];
 
@@ -66,17 +77,17 @@ export const sendChatRequest = async (
     participants: [
       {
         userId: requestedBy,
-        username: requestedByUsername,
-        fullName: requestedByFullName,
+        username: finalFromUsername,
+        fullName: finalFromFullName,
       },
       {
         userId: toUserId,
-        username: toUsername,
-        fullName: toFullName,
+        username: finalToUsername,
+        fullName: finalToFullName,
       },
     ],
     requestedBy,
-    requestMessage: requestMessage || null, // ← ye add karo
+    requestMessage: requestMessage || null,
     status: "pending",
   });
 
@@ -113,7 +124,27 @@ export const respondToChatRequest = async (chatId, userId, action) => {
 
   chat.status = action; // 'accepted' or 'rejected'
   await chat.save();
-  return chat;
+
+  // ── Fresh naam auth service se
+  const plain = chat.toObject();
+  const userInfoMap = await getUsersByIds(
+    plain.participants.map((p) => p.userId.toString()),
+  );
+
+  const participants = plain.participants.map((p) => {
+    const fresh = userInfoMap[p.userId.toString()];
+    return {
+      userId: p.userId,
+      username: fresh?.username ?? p.username ?? null,
+      fullName: fresh?.fullName ?? p.fullName ?? null,
+      profilePicture: fresh?.profilePicture ?? null,
+    };
+  });
+
+  const otherUser =
+    participants.find((p) => p.userId.toString() !== userId) || null;
+
+  return { ...plain, participants, otherUser };
 };
 
 // ─── Send Direct Message
@@ -164,7 +195,7 @@ export const sendMessage = async (
 
 // ─── Get Chat History
 export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
-  const chat = await DirectChat.findById(chatId);
+  const chat = await DirectChat.findById(chatId).lean();
 
   if (!chat) {
     const err = new Error("Chat not found");
@@ -186,6 +217,24 @@ export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
     await markDirectChatAsRead(chatId, userId);
   }
 
+  // ── Participants ke fresh naam
+  const userInfoMap = await getUsersByIds(
+    chat.participants.map((p) => p.userId.toString()),
+  );
+
+  const participants = chat.participants.map((p) => {
+    const fresh = userInfoMap[p.userId.toString()];
+    return {
+      userId: p.userId,
+      username: fresh?.username ?? p.username ?? null,
+      fullName: fresh?.fullName ?? p.fullName ?? null,
+      profilePicture: fresh?.profilePicture ?? null,
+    };
+  });
+
+  const otherUser =
+    participants.find((p) => p.userId.toString() !== userId) || null;
+
   const skip = (page - 1) * limit;
   const messages = await DirectMessage.find({ chatId, isDeleted: false })
     .sort({ createdAt: -1 })
@@ -199,7 +248,7 @@ export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
   });
 
   return {
-    chat,
+    chat: { ...chat, participants, otherUser },
     messages: messages.reverse(),
     pagination: {
       page,
@@ -220,7 +269,15 @@ export const getUserChats = async (userId) => {
     .sort({ lastMessageAt: -1 })
     .lean();
 
-  // ── Har chat ke liye unread count nikalo
+  if (!chats.length) return [];
+
+  // ── Sab participants ke fresh naam auth service se
+  const allUserIds = chats.flatMap((chat) =>
+    chat.participants.map((p) => p.userId.toString()),
+  );
+  const userInfoMap = await getUsersByIds(allUserIds);
+
+  // ── Har chat ke liye unread count + enriched participants
   const chatsWithUnread = await Promise.all(
     chats.map(async (chat) => {
       const unreadCount = await DirectMessage.countDocuments({
@@ -229,7 +286,25 @@ export const getUserChats = async (userId) => {
         "seenBy.userId": { $ne: userId },
         isDeleted: false,
       });
-      return { ...chat, unreadCount };
+
+      const participants = chat.participants.map((p) => {
+        const id = p.userId.toString();
+        const fresh = userInfoMap[id];
+
+        return {
+          userId: p.userId,
+          // fresh data pehle, snapshot fallback
+          username: fresh?.username ?? p.username ?? null,
+          fullName: fresh?.fullName ?? p.fullName ?? null,
+          profilePicture: fresh?.profilePicture ?? null,
+        };
+      });
+
+      // ── Doosre user ka shortcut — frontend ke liye
+      const otherUser =
+        participants.find((p) => p.userId.toString() !== userId) || null;
+
+      return { ...chat, participants, otherUser, unreadCount };
     }),
   );
 
@@ -244,7 +319,34 @@ export const getPendingRequests = async (userId) => {
     status: "pending",
   }).lean();
 
-  return requests;
+  if (!requests.length) return [];
+
+  const allUserIds = requests.flatMap((chat) =>
+    chat.participants.map((p) => p.userId.toString()),
+  );
+  const userInfoMap = await getUsersByIds(allUserIds);
+
+  return requests.map((chat) => {
+    const participants = chat.participants.map((p) => {
+      const id = p.userId.toString();
+      const fresh = userInfoMap[id];
+
+      return {
+        userId: p.userId,
+        username: fresh?.username ?? p.username ?? null,
+        fullName: fresh?.fullName ?? p.fullName ?? null,
+        profilePicture: fresh?.profilePicture ?? null,
+      };
+    });
+
+    // ── Jisne request bheji uska info — frontend ko yahi chahiye
+    const requester =
+      participants.find(
+        (p) => p.userId.toString() === chat.requestedBy.toString(),
+      ) || null;
+
+    return { ...chat, participants, requester };
+  });
 };
 
 // ─── Withdraw Direct Chat Request
