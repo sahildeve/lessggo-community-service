@@ -138,6 +138,10 @@ export const respondToChatRequest = async (chatId, userId, action) => {
       username: fresh?.username ?? p.username ?? null,
       fullName: fresh?.fullName ?? p.fullName ?? null,
       profilePicture: fresh?.profilePicture ?? null,
+      age: fresh?.age ?? null,
+      gender: fresh?.gender ?? null,
+      designation: fresh?.designation ?? null,
+      interests: fresh?.interests ?? [],
     };
   });
 
@@ -229,6 +233,10 @@ export const getChatHistory = async (chatId, userId, page = 1, limit = 50) => {
       username: fresh?.username ?? p.username ?? null,
       fullName: fresh?.fullName ?? p.fullName ?? null,
       profilePicture: fresh?.profilePicture ?? null,
+      age: fresh?.age ?? null,
+      gender: fresh?.gender ?? null,
+      designation: fresh?.designation ?? null,
+      interests: fresh?.interests ?? [],
     };
   });
 
@@ -297,6 +305,10 @@ export const getUserChats = async (userId) => {
           username: fresh?.username ?? p.username ?? null,
           fullName: fresh?.fullName ?? p.fullName ?? null,
           profilePicture: fresh?.profilePicture ?? null,
+          age: fresh?.age ?? null,
+          gender: fresh?.gender ?? null,
+          designation: fresh?.designation ?? null,
+          interests: fresh?.interests ?? [],
         };
       });
 
@@ -336,6 +348,10 @@ export const getPendingRequests = async (userId) => {
         username: fresh?.username ?? p.username ?? null,
         fullName: fresh?.fullName ?? p.fullName ?? null,
         profilePicture: fresh?.profilePicture ?? null,
+        age: fresh?.age ?? null,
+        gender: fresh?.gender ?? null,
+        designation: fresh?.designation ?? null,
+        interests: fresh?.interests ?? [],
       };
     });
 

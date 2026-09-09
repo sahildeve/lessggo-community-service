@@ -39,6 +39,10 @@ export const getUsersByIds = async (userIds) => {
         username: user.username ?? null,
         fullName: user.fullName ?? null,
         profilePicture: user.profilePicture ?? null,
+        age: user.age ?? null,
+        gender: user.gender ?? null,
+        designation: user.designation ?? null,
+        interests: user.interests ?? [],
       };
       result[String(user.userId)] = info;
 
