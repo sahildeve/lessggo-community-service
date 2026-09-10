@@ -3,6 +3,7 @@ import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
 import { createNotification } from "../utils/notification.js";
 import { getDisplayName } from "../utils/displayName.js";
+import { getUsersByIds } from "../utils/authServiceClient.js";
 
 // ─── Create Community
 export const createCommunity = async (req, res) => {
@@ -46,6 +47,21 @@ export const joinCommunity = async (req, res) => {
       getDisplayName(req.user),
     );
 
+    // ── Joiner ki poori info — admin ko card dikhana hai
+    const infoMap = await getUsersByIds([req.user.sub]);
+    const info = infoMap[String(req.user.sub)];
+    const joinerName = info?.fullName ?? getDisplayName(req.user);
+
+    const joiner = {
+      userId: req.user.sub,
+      fullName: info?.fullName ?? null,
+      profilePicture: info?.profilePicture ?? null,
+      age: info?.age ?? null,
+      gender: info?.gender ?? null,
+      designation: info?.designation ?? null,
+      interests: info?.interests ?? [],
+    };
+
     const io = req.app.get("io");
 
     if (status === "pending") {
@@ -57,8 +73,9 @@ export const joinCommunity = async (req, res) => {
             communityId,
             communityName: community.name,
             userId: req.user.sub,
-            username: getDisplayName(req.user),
-            message: `${getDisplayName(req.user)} wants to join your community`,
+            username: joinerName,
+            user: joiner,
+            message: `${joinerName} wants to join your community`,
           },
         );
       }
@@ -67,7 +84,7 @@ export const joinCommunity = async (req, res) => {
         userId: community.createdBy.userId,
         type: "community_join_request",
         title: "New Join Request",
-        message: `${getDisplayName(req.user)} wants to join "${community.name}"`,
+        message: `${joinerName} wants to join "${community.name}"`,
         data: { communityId, userId: req.user.sub },
       });
 
@@ -81,12 +98,13 @@ export const joinCommunity = async (req, res) => {
     // Public — seedha join
     await communityService.saveSystemMessage(
       communityId,
-      `${getDisplayName(req.user)} joined the community`,
+      `${joinerName} joined the community`,
     );
 
     if (io) {
       io.to(`community_${communityId}`).emit("community_system_message", {
-        message: `${getDisplayName(req.user)} joined the community`,
+        message: `${joinerName} joined the community`,
+        user: joiner,
         timestamp: new Date(),
       });
     }
@@ -95,7 +113,7 @@ export const joinCommunity = async (req, res) => {
       userId: community.createdBy.userId,
       type: "join_community",
       title: "New Member Joined",
-      message: `${getDisplayName(req.user)} joined "${community.name}"`,
+      message: `${joinerName} joined "${community.name}"`,
       data: { communityId, userId: req.user.sub },
     });
 
@@ -206,11 +224,30 @@ export const getJoinRequests = async (req, res) => {
       return error(res, "Only admin can view join requests", 403);
     }
 
+    // ── Requesters ki poori info
+    const requesterIds = community.joinRequests.map((r) => r.userId.toString());
+    const infoMap = await getUsersByIds(requesterIds);
+
+    const joinRequests = community.joinRequests.map((r) => {
+      const fresh = infoMap[r.userId.toString()];
+      return {
+        userId: r.userId,
+        username: fresh?.username ?? null,
+        fullName: fresh?.fullName ?? r.username ?? null,
+        profilePicture: fresh?.profilePicture ?? null,
+        age: fresh?.age ?? null,
+        gender: fresh?.gender ?? null,
+        designation: fresh?.designation ?? null,
+        interests: fresh?.interests ?? [],
+        requestedAt: r.requestedAt,
+      };
+    });
+
     return success(
       res,
       {
-        joinRequests: community.joinRequests,
-        count: community.joinRequests.length,
+        joinRequests,
+        count: joinRequests.length,
       },
       "Join requests fetched",
     );

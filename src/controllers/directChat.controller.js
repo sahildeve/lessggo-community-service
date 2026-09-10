@@ -6,6 +6,7 @@ import { createNotification } from "../utils/notification.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import Community from "../models/Community.js";
 import { getDisplayName } from "../utils/displayName.js";
+import { getUsersByIds } from "../utils/authServiceClient.js";
 import redis from "../config/redis.js";
 
 // ─── Send Chat Request
@@ -22,14 +23,28 @@ export const sendChatRequest = async (req, res) => {
       requestMessage,
     );
 
+    // ── Sender ki poori info — receiver ko card dikhana hai
+    const infoMap = await getUsersByIds([req.user.sub]);
+    const info = infoMap[String(req.user.sub)];
+    const senderName = info?.fullName ?? getDisplayName(req.user);
+
     const io = req.app.get("io");
     if (io) {
       io.to(`user:${toUserId}`).emit("direct_chat_request", {
         chatId: chat._id,
         fromUserId: req.user.sub,
-        fromUsername: getDisplayName(req.user),
+        fromUsername: senderName,
+        from: {
+          userId: req.user.sub,
+          fullName: info?.fullName ?? null,
+          profilePicture: info?.profilePicture ?? null,
+          age: info?.age ?? null,
+          gender: info?.gender ?? null,
+          designation: info?.designation ?? null,
+          interests: info?.interests ?? [],
+        },
         requestMessage,
-        message: `${getDisplayName(req.user)} sent you a chat request`,
+        message: `${senderName} sent you a chat request`,
       });
     }
 
@@ -37,11 +52,11 @@ export const sendChatRequest = async (req, res) => {
       userId: toUserId,
       type: "direct_chat_request",
       title: "New Chat Request",
-      message: `${getDisplayName(req.user)} wants to chat with you`,
+      message: `${senderName} wants to chat with you`,
       data: { chatId: chat._id, fromUserId: req.user.sub },
     });
 
-    await sendChatRequestEmail(toUserId, getDisplayName(req.user));
+    await sendChatRequestEmail(toUserId, senderName);
 
     return success(res, { chat }, "Chat request sent successfully", 201);
   } catch (err) {
@@ -52,6 +67,7 @@ export const sendChatRequest = async (req, res) => {
     return error(res, err.message, err.status || 500);
   }
 };
+
 // ─── Respond to Chat Request
 export const respondToChatRequest = async (req, res) => {
   try {
@@ -63,17 +79,31 @@ export const respondToChatRequest = async (req, res) => {
       action,
     );
 
+    // ── Responder ki info — requester ko dikhani hai
+    const infoMap = await getUsersByIds([req.user.sub]);
+    const info = infoMap[String(req.user.sub)];
+    const responderName = info?.fullName ?? getDisplayName(req.user);
+
     const io = req.app.get("io");
     if (io) {
       io.to(`user:${chat.requestedBy}`).emit(
         action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
         {
           chatId: chat._id,
-          fromUsername: getDisplayName(req.user),
+          fromUsername: responderName,
+          from: {
+            userId: req.user.sub,
+            fullName: info?.fullName ?? null,
+            profilePicture: info?.profilePicture ?? null,
+            age: info?.age ?? null,
+            gender: info?.gender ?? null,
+            designation: info?.designation ?? null,
+            interests: info?.interests ?? [],
+          },
           message:
             action === "accepted"
-              ? `${getDisplayName(req.user)} accepted your chat request`
-              : `${getDisplayName(req.user)} rejected your chat request`,
+              ? `${responderName} accepted your chat request`
+              : `${responderName} rejected your chat request`,
         },
       );
     }
@@ -88,8 +118,8 @@ export const respondToChatRequest = async (req, res) => {
           : "Chat Request Rejected",
       message:
         action === "accepted"
-          ? `${getDisplayName(req.user)} accepted your chat request`
-          : `${getDisplayName(req.user)} rejected your chat request`,
+          ? `${responderName} accepted your chat request`
+          : `${responderName} rejected your chat request`,
       data: { chatId: chat._id },
     });
 
@@ -139,7 +169,7 @@ export const getUserChats = async (req, res) => {
   }
 };
 
-// ─── Get Pending Requests — same
+// ─── Get Pending Requests
 export const getPendingRequests = async (req, res) => {
   try {
     // ─── Direct chat pending requests
@@ -167,7 +197,7 @@ export const getPendingRequests = async (req, res) => {
       };
     });
 
-    // ─── Community join requests JO MUJHE MILI (admin perspective) ← naya
+    // ─── Community join requests JO MUJHE MILI (admin perspective)
     const communitiesIAdmin = await Community.find({
       "members.userId": req.user.sub,
       "members.role": "admin",
@@ -176,16 +206,31 @@ export const getPendingRequests = async (req, res) => {
       .select("_id name joinRequests")
       .lean();
 
+    // ── Requesters ki poori info — admin ko card dikhana hai
+    const requesterIds = communitiesIAdmin.flatMap((c) =>
+      c.joinRequests.map((r) => r.userId.toString()),
+    );
+    const requesterMap = await getUsersByIds(requesterIds);
+
     const receivedCommunityJoinRequests = communitiesIAdmin.flatMap(
       (community) =>
-        community.joinRequests.map((r) => ({
-          type: "community_join",
-          communityId: community._id,
-          communityName: community.name,
-          userId: r.userId,
-          username: r.username,
-          requestedAt: r.requestedAt,
-        })),
+        community.joinRequests.map((r) => {
+          const fresh = requesterMap[r.userId.toString()];
+          return {
+            type: "community_join",
+            communityId: community._id,
+            communityName: community.name,
+            userId: r.userId,
+            username: fresh?.username ?? null,
+            fullName: fresh?.fullName ?? r.username ?? null,
+            profilePicture: fresh?.profilePicture ?? null,
+            age: fresh?.age ?? null,
+            gender: fresh?.gender ?? null,
+            designation: fresh?.designation ?? null,
+            interests: fresh?.interests ?? [],
+            requestedAt: r.requestedAt,
+          };
+        }),
     );
 
     return success(
@@ -193,7 +238,7 @@ export const getPendingRequests = async (req, res) => {
       {
         directRequests,
         communityJoinRequests, // jo maine bheji
-        receivedCommunityJoinRequests, // ← jo mujhe milin (main admin hoon)
+        receivedCommunityJoinRequests, // jo mujhe milin (main admin hoon)
       },
       "Pending requests fetched",
     );

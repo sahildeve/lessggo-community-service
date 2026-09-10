@@ -5,6 +5,7 @@ import * as communityService from "./services/community.service.js";
 import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
 import { getDisplayName } from "./utils/displayName.js";
+import { getUsersByIds } from "./utils/authServiceClient.js";
 
 const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
@@ -33,10 +34,23 @@ const initSocket = (httpServer) => {
   });
 
   io.on("connection", async (socket) => {
-    logger.info(`User connected: ${getDisplayName(socket.user)}`);
     socket.join(`user:${socket.user.sub}`);
 
     const userId = socket.user.sub;
+
+    // ─── User info ek baar fetch, poore connection ke liye cache
+    socket.userInfo = null;
+    try {
+      const map = await getUsersByIds([userId]);
+      socket.userInfo = map[String(userId)] ?? null;
+    } catch {
+      // Fetch fail ho to JWT wala data fallback rahega
+    }
+
+    const displayName =
+      socket.userInfo?.fullName ?? getDisplayName(socket.user);
+
+    logger.info(`User connected: ${displayName}`);
 
     try {
       await redis.set(
@@ -74,11 +88,17 @@ const initSocket = (httpServer) => {
     // LAYER 1 — Direct Chat
     // ════════════════════════════════════════════════════════════
 
-    socket.on("join_direct_chat", async (chatId) => {
+    socket.on("join_direct_chat", async (payload) => {
       try {
+        const chatId = typeof payload === "string" ? payload : payload?.chatId;
+        if (!chatId) {
+          socket.emit("error", { message: "chatId is required" });
+          return;
+        }
+
         socket.join(`direct_${chatId}`);
         await directChatService.markDirectChatAsRead(chatId, userId);
-        logger.info(`${getDisplayName(socket.user)} joined direct chat: ${chatId}`);
+        logger.info(`${displayName} joined direct chat: ${chatId}`);
       } catch (err) {
         socket.emit("error", { message: err.message });
       }
@@ -86,6 +106,10 @@ const initSocket = (httpServer) => {
 
     socket.on("send_direct_message", async ({ chatId, message }) => {
       try {
+        if (!chatId) {
+          socket.emit("error", { message: "chatId is required" });
+          return;
+        }
         if (!message?.trim()) return;
         if (message.length > 500) {
           socket.emit("error", { message: "Message too long (max 500 chars)" });
@@ -94,16 +118,18 @@ const initSocket = (httpServer) => {
 
         const savedMsg = await directChatService.sendMessage(
           chatId,
-          socket.user.sub,
-          getDisplayName(socket.user),
+          userId,
+          displayName,
           message.trim(),
         );
 
         io.to(`direct_${chatId}`).emit("new_direct_message", {
           messageId: savedMsg._id,
           chatId,
-          senderId: socket.user.sub,
-          senderUsername: getDisplayName(socket.user),
+          senderId: userId,
+          senderUsername: displayName,
+          senderFullName: displayName,
+          senderProfilePicture: socket.userInfo?.profilePicture ?? null,
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
@@ -111,7 +137,7 @@ const initSocket = (httpServer) => {
         // ── Jo log abhi chat room me hain, unke liye turant seen mark karo
         const socketsInRoom = await io.in(`direct_${chatId}`).fetchSockets();
         for (const s of socketsInRoom) {
-          if (s.user.sub !== socket.user.sub) {
+          if (s.user.sub !== userId) {
             await directChatService.markDirectChatAsRead(chatId, s.user.sub);
           }
         }
@@ -123,26 +149,36 @@ const initSocket = (httpServer) => {
 
     socket.on("direct_typing", ({ chatId, isTyping }) => {
       socket.to(`direct_${chatId}`).emit("direct_user_typing", {
-        userId: socket.user.sub,
-        username: getDisplayName(socket.user),
+        userId,
+        username: displayName,
         isTyping,
       });
     });
 
-    socket.on("leave_direct_chat", (chatId) => {
+    socket.on("leave_direct_chat", (payload) => {
+      const chatId = typeof payload === "string" ? payload : payload?.chatId;
+      if (!chatId) return;
+
       socket.leave(`direct_${chatId}`);
-      logger.info(`${getDisplayName(socket.user)} left direct chat: ${chatId}`);
+      logger.info(`${displayName} left direct chat: ${chatId}`);
     });
 
     // ════════════════════════════════════════════════════════════
     // LAYER 2 — Community Chat
     // ════════════════════════════════════════════════════════════
 
-    socket.on("join_community", async (communityId) => {
+    socket.on("join_community", async (payload) => {
       try {
+        const communityId =
+          typeof payload === "string" ? payload : payload?.communityId;
+        if (!communityId) {
+          socket.emit("error", { message: "communityId is required" });
+          return;
+        }
+
         const community = await communityService.getCommunity(communityId);
         const isMember = community.members.find(
-          (m) => m.userId.toString() === socket.user.sub,
+          (m) => m.userId.toString() === userId,
         );
         if (!isMember) {
           socket.emit("error", {
@@ -152,7 +188,7 @@ const initSocket = (httpServer) => {
         }
         socket.join(`community_${communityId}`);
         await communityService.markCommunityChatAsRead(communityId, userId);
-        logger.info(`${getDisplayName(socket.user)} joined community: ${communityId}`);
+        logger.info(`${displayName} joined community: ${communityId}`);
       } catch (err) {
         logger.error("Join community error:", err.message);
         socket.emit("error", { message: err.message });
@@ -161,6 +197,10 @@ const initSocket = (httpServer) => {
 
     socket.on("send_community_message", async ({ communityId, message }) => {
       try {
+        if (!communityId) {
+          socket.emit("error", { message: "communityId is required" });
+          return;
+        }
         if (!message?.trim()) return;
         if (message.length > 500) {
           socket.emit("error", { message: "Message too long (max 500 chars)" });
@@ -169,16 +209,18 @@ const initSocket = (httpServer) => {
 
         const savedMsg = await communityService.sendMessage(
           communityId,
-          socket.user.sub,
-          getDisplayName(socket.user),
+          userId,
+          displayName,
           message.trim(),
         );
 
         io.to(`community_${communityId}`).emit("new_community_message", {
           messageId: savedMsg._id,
           communityId,
-          senderId: socket.user.sub,
-          senderUsername: getDisplayName(socket.user),
+          senderId: userId,
+          senderUsername: displayName,
+          senderFullName: displayName,
+          senderProfilePicture: socket.userInfo?.profilePicture ?? null,
           message: savedMsg.message,
           timestamp: savedMsg.createdAt,
         });
@@ -188,7 +230,7 @@ const initSocket = (httpServer) => {
           .in(`community_${communityId}`)
           .fetchSockets();
         for (const s of socketsInRoom) {
-          if (s.user.sub !== socket.user.sub) {
+          if (s.user.sub !== userId) {
             await communityService.markCommunityChatAsRead(
               communityId,
               s.user.sub,
@@ -204,16 +246,20 @@ const initSocket = (httpServer) => {
     socket.on("community_typing", ({ communityId, isTyping }) => {
       socket.to(`community_${communityId}`).emit("community_user_typing", {
         communityId,
-        userId: socket.user.sub,
-        username: getDisplayName(socket.user),
+        userId,
+        username: displayName,
         isTyping,
       });
     });
 
-    socket.on("leave_community", async (communityId) => {
+    socket.on("leave_community", async (payload) => {
       try {
+        const communityId =
+          typeof payload === "string" ? payload : payload?.communityId;
+        if (!communityId) return;
+
         socket.leave(`community_${communityId}`);
-        logger.info(`${getDisplayName(socket.user)} left community: ${communityId}`);
+        logger.info(`${displayName} left community: ${communityId}`);
       } catch (err) {
         logger.error("Leave community error:", err.message);
       }
@@ -225,7 +271,7 @@ const initSocket = (httpServer) => {
 
         if (activeSockets.length > 0) {
           logger.info(
-            `${getDisplayName(socket.user)} still has ${activeSockets.length} active socket(s)`,
+            `${displayName} still has ${activeSockets.length} active socket(s)`,
           );
           return;
         }
@@ -251,7 +297,7 @@ const initSocket = (httpServer) => {
           });
         }
 
-        logger.info(`User disconnected: ${getDisplayName(socket.user)}`);
+        logger.info(`User disconnected: ${displayName}`);
       } catch (err) {
         logger.error("Disconnect presence error:", err.message);
       }
