@@ -365,6 +365,46 @@ export const getPendingRequests = async (userId) => {
   });
 };
 
+// ─── Get Sent Requests (jo maine bheji, abhi pending hain)
+export const getSentRequests = async (userId) => {
+  const requests = await DirectChat.find({
+    "participants.userId": userId,
+    requestedBy: userId,
+    status: "pending",
+  }).lean();
+
+  if (!requests.length) return [];
+
+  const allUserIds = requests.flatMap((chat) =>
+    chat.participants.map((p) => p.userId.toString()),
+  );
+  const userInfoMap = await getUsersByIds(allUserIds);
+
+  return requests.map((chat) => {
+    const participants = chat.participants.map((p) => {
+      const id = p.userId.toString();
+      const fresh = userInfoMap[id];
+
+      return {
+        userId: p.userId,
+        username: fresh?.username ?? p.username ?? null,
+        fullName: fresh?.fullName ?? p.fullName ?? null,
+        profilePicture: fresh?.profilePicture ?? null,
+        age: fresh?.age ?? null,
+        gender: fresh?.gender ?? null,
+        designation: fresh?.designation ?? null,
+        interests: fresh?.interests ?? [],
+      };
+    });
+
+    // ── Jisko request bheji uska info - send to frontend
+    const toUser =
+      participants.find((p) => p.userId.toString() !== userId) || null;
+
+    return { ...chat, participants, toUser };
+  });
+};
+
 // ─── Withdraw Direct Chat Request
 export const withdrawDirectChatRequest = async (chatId, userId) => {
   const chat = await DirectChat.findById(chatId);

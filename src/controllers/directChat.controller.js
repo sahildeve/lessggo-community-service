@@ -172,8 +172,13 @@ export const getUserChats = async (req, res) => {
 // ─── Get Pending Requests
 export const getPendingRequests = async (req, res) => {
   try {
-    // ─── Direct chat pending requests
+    // ─── Direct chat pending requests (jo mujhe mili)
     const directRequests = await directChatService.getPendingRequests(
+      req.user.sub,
+    );
+
+    // ─── Direct chat sent requests (jo maine bheji, abhi pending hain)
+    const sentDirectRequests = await directChatService.getSentRequests(
       req.user.sub,
     );
 
@@ -197,10 +202,8 @@ export const getPendingRequests = async (req, res) => {
       };
     });
 
-    // ─── Community join requests JO MUJHE MILI (admin perspective)
     const communitiesIAdmin = await Community.find({
-      "members.userId": req.user.sub,
-      "members.role": "admin",
+      members: { $elemMatch: { userId: req.user.sub, role: "admin" } },
       "joinRequests.0": { $exists: true }, // sirf jahan pending requests hain
     })
       .select("_id name joinRequests")
@@ -236,9 +239,10 @@ export const getPendingRequests = async (req, res) => {
     return success(
       res,
       {
-        directRequests,
-        communityJoinRequests, // jo maine bheji
-        receivedCommunityJoinRequests, // jo mujhe milin (main admin hoon)
+        directRequests, // direct chat — jo mujhe mili
+        sentDirectRequests, // direct chat — jo maine bheji (pending)
+        communityJoinRequests, // community — jo maine bheji
+        receivedCommunityJoinRequests, // community — jo mujhe milin (main admin hoon)
       },
       "Pending requests fetched",
     );

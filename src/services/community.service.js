@@ -1,5 +1,6 @@
 import Community from "../models/Community.js";
 import CommunityMessage from "../models/CommunityMessage.js";
+import { getUsersByIds } from "../utils/authServiceClient.js";
 import logger from "../utils/logger.js";
 
 // ─── Create Community
@@ -152,7 +153,34 @@ export const getMyCommunitites = async (userId) => {
     .sort({ lastMessageAt: -1, createdAt: -1 })
     .lean();
 
-  // ── Har community ke liye unread count
+  if (!communities.length) return [];
+
+  // ── Sab members + creators ki info auth service se (ek hi batch call)
+  const allUserIds = communities.flatMap((c) => [
+    c.createdBy?.userId?.toString(),
+    ...(c.members || []).map((m) => m.userId.toString()),
+  ]);
+
+  const userInfoMap = await getUsersByIds(allUserIds);
+
+  // ── Snapshot + fresh info merge karne wala helper
+  const enrich = (snapshot) => {
+    const id = snapshot.userId.toString();
+    const fresh = userInfoMap[id];
+
+    return {
+      userId: snapshot.userId,
+      username: fresh?.username ?? snapshot.username ?? null,
+      fullName: fresh?.fullName ?? snapshot.username ?? null,
+      profilePicture: fresh?.profilePicture ?? null,
+      age: fresh?.age ?? null,
+      gender: fresh?.gender ?? null,
+      designation: fresh?.designation ?? null,
+      interests: fresh?.interests ?? [],
+    };
+  };
+
+  // ── Har community ke liye unread count + enriched members
   const communitiesWithUnread = await Promise.all(
     communities.map(async (community) => {
       const unreadCount = await CommunityMessage.countDocuments({
@@ -162,7 +190,32 @@ export const getMyCommunitites = async (userId) => {
         isDeleted: false,
         messageType: "text",
       });
-      return { ...community, unreadCount };
+
+      const members = (community.members || []).map((m) => ({
+        ...enrich(m),
+        role: m.role,
+        status: m.status,
+        joinedAt: m.joinedAt,
+        _id: m._id,
+      }));
+
+      // ── joinRequests sirf admin ko — normal members ko nahi
+      const isAdmin = (community.members || []).some(
+        (m) => m.userId.toString() === userId && m.role === "admin",
+      );
+
+      const { joinRequests, ...rest } = community;
+
+      return {
+        ...rest,
+        ...(isAdmin ? { joinRequests } : {}),
+        createdBy: community.createdBy
+          ? enrich(community.createdBy)
+          : community.createdBy,
+        members,
+        memberCount: members.length,
+        unreadCount,
+      };
     }),
   );
 
@@ -217,14 +270,59 @@ export const deleteCommunity = async (communityId, userId) => {
 };
 
 // ─── Get Community
-export const getCommunity = async (communityId) => {
-  const community = await Community.findById(communityId).lean();
-  if (!community) {
-    const err = new Error("Community not found");
-    err.status = 404;
-    throw err;
+export const getCommunity = async (req, res) => {
+  try {
+    const { communityId } = req.params;
+    const community = await communityService.getCommunity(communityId);
+
+    const isMember = (community.members || []).some(
+      (m) => m.userId.toString() === req.user.sub,
+    );
+
+    const isAdmin = (community.members || []).some(
+      (m) => m.userId.toString() === req.user.sub && m.role === "admin",
+    );
+
+    // ── Non-members ko sirf basic info — members list aur requests nahi
+    if (!isMember) {
+      const { members, joinRequests, ...publicInfo } = community;
+
+      return success(
+        res,
+        {
+          community: {
+            ...publicInfo,
+            memberCount: (members || []).length,
+            isMember: false,
+          },
+        },
+        "Community fetched successfully",
+      );
+    }
+
+    // ── joinRequests sirf admin ko
+    const { joinRequests, ...rest } = community;
+
+    return success(
+      res,
+      {
+        community: {
+          ...rest,
+          ...(isAdmin ? { joinRequests } : {}),
+          memberCount: (community.members || []).length,
+          isMember: true,
+          isAdmin,
+        },
+      },
+      "Community fetched successfully",
+    );
+  } catch (err) {
+    logger.error("Get community error:", {
+      message: err.message,
+      stack: err.stack,
+    });
+    return error(res, err.message, err.status || 500);
   }
-  return community;
 };
 
 // ─── Search Communities
@@ -240,12 +338,26 @@ export const searchCommunities = async ({
   if (search) query.$text = { $search: search };
 
   const skip = (page - 1) * limit;
-  const communities = await Community.find(query)
-    .select("-members")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limit)
-    .lean();
+
+  const communities = await Community.aggregate([
+    { $match: query },
+    { $sort: { createdAt: -1 } },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      // ── memberCount added
+      $addFields: {
+        memberCount: { $size: { $ifNull: ["$members", []] } },
+      },
+    },
+    {
+      $project: {
+        members: 0,
+        joinRequests: 0,
+        __v: 0,
+      },
+    },
+  ]);
 
   const total = await Community.countDocuments(query);
 

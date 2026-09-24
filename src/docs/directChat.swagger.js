@@ -267,62 +267,26 @@ export const directChatSwaggerDocs = {
                     properties: {
                       directRequests: {
                         type: "array",
+                        description:
+                          "Chat requests received by me (pending). Includes 'requester' shortcut.",
+                        items: { type: "object" },
+                      },
+                      sentDirectRequests: {
+                        type: "array",
+                        description:
+                          "Chat requests I sent that are still pending. Includes 'toUser' shortcut — use this to disable the request button.",
                         items: { type: "object" },
                       },
                       communityJoinRequests: {
                         type: "array",
-                        description:
-                          "Community join requests sent by current user",
-                        items: {
-                          type: "object",
-                          properties: {
-                            type: { type: "string", example: "community_join" },
-                            communityId: {
-                              type: "string",
-                              example: "6a4b87beeb44d600d0c706d6",
-                            },
-                            userId: {
-                              type: "string",
-                              example: "6a421adddd99c956ec0291b9",
-                            },
-                            communityName: {
-                              type: "string",
-                              example: "XYZ_01",
-                            },
-                            requestedAt: {
-                              type: "string",
-                              example: "2026-07-06T10:48:16.618Z",
-                            },
-                          },
-                        },
+                        description: "Community join requests I sent",
+                        items: { type: "object" },
                       },
                       receivedCommunityJoinRequests: {
                         type: "array",
                         description:
-                          "Community join requests received (current user is admin)",
-                        items: {
-                          type: "object",
-                          properties: {
-                            type: { type: "string", example: "community_join" },
-                            communityId: {
-                              type: "string",
-                              example: "6a4b87beeb44d600d0c706d6",
-                            },
-                            communityName: {
-                              type: "string",
-                              example: "XYZ_01",
-                            },
-                            userId: {
-                              type: "string",
-                              example: "687ab12345f585c7dfc43336",
-                            },
-                            username: { type: "string", example: "sandeep123" },
-                            requestedAt: {
-                              type: "string",
-                              example: "2026-07-06T10:48:16.618Z",
-                            },
-                          },
-                        },
+                          "Community join requests received (where I am admin)",
+                        items: { type: "object" },
                       },
                     },
                   },

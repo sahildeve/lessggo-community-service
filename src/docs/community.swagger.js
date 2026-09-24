@@ -39,7 +39,103 @@ export const communitySwaggerDocs = {
       unreadCount: { type: "integer", example: 2 },
       security: [{ bearerAuth: [] }],
       responses: {
-        200: { description: "My communities fetched successfully" },
+        200: {
+          description: "My communities fetched successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", example: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      communities: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            _id: { type: "string" },
+                            name: {
+                              type: "string",
+                              example: "Gurgaon Runners",
+                            },
+                            description: { type: "string" },
+                            city: { type: "string", example: "Gurugram" },
+                            isPrivate: { type: "boolean", example: false },
+                            memberCount: { type: "integer", example: 12 },
+                            maxMembers: { type: "integer", example: 100 },
+                            unreadCount: { type: "integer", example: 3 },
+                            lastMessage: { type: "string" },
+                            lastMessageAt: {
+                              type: "string",
+                              format: "date-time",
+                            },
+                            createdBy: {
+                              type: "object",
+                              description: "Enriched from auth service",
+                              properties: {
+                                userId: { type: "string" },
+                                username: { type: "string", nullable: true },
+                                fullName: { type: "string", nullable: true },
+                                profilePicture: {
+                                  type: "string",
+                                  nullable: true,
+                                },
+                                age: { type: "integer", nullable: true },
+                                gender: { type: "string", nullable: true },
+                                designation: { type: "string", nullable: true },
+                                interests: {
+                                  type: "array",
+                                  items: { type: "string" },
+                                },
+                              },
+                            },
+                            members: {
+                              type: "array",
+                              description:
+                                "Each member enriched from auth service (profilePicture, fullName, age, etc.)",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  userId: { type: "string" },
+                                  username: { type: "string", nullable: true },
+                                  fullName: { type: "string", nullable: true },
+                                  profilePicture: {
+                                    type: "string",
+                                    nullable: true,
+                                  },
+                                  age: { type: "integer", nullable: true },
+                                  gender: { type: "string", nullable: true },
+                                  designation: {
+                                    type: "string",
+                                    nullable: true,
+                                  },
+                                  interests: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                  },
+                                  role: {
+                                    type: "string",
+                                    enum: ["admin", "member"],
+                                  },
+                                  joinedAt: {
+                                    type: "string",
+                                    format: "date-time",
+                                  },
+                                },
+                              },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         401: { description: "Unauthorized" },
       },
     },
@@ -69,7 +165,53 @@ export const communitySwaggerDocs = {
         },
       ],
       responses: {
-        200: { description: "Communities fetched successfully" },
+        200: {
+          description: "Communities fetched successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", example: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      communities: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            _id: { type: "string" },
+                            name: {
+                              type: "string",
+                              example: "Gurgaon Runners",
+                            },
+                            description: { type: "string" },
+                            city: { type: "string", example: "Gurugram" },
+                            isPrivate: { type: "boolean", example: false },
+                            memberCount: {
+                              type: "integer",
+                              example: 12,
+                              description:
+                                "Total members already in the community",
+                            },
+                            maxMembers: { type: "integer", example: 100 },
+                            createdBy: { type: "object" },
+                            lastMessageAt: {
+                              type: "string",
+                              format: "date-time",
+                            },
+                          },
+                        },
+                      },
+                      pagination: { type: "object" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         401: { description: "Unauthorized" },
       },
     },
@@ -78,6 +220,8 @@ export const communitySwaggerDocs = {
   "/api/community/{communityId}": {
     get: {
       summary: "Get community details",
+      description:
+        "Response depends on the caller: non-members get basic info + memberCount only; members also get the members list; admins additionally get joinRequests.",
       tags: ["Community"],
       security: [{ bearerAuth: [] }],
       parameters: [
@@ -89,7 +233,54 @@ export const communitySwaggerDocs = {
         },
       ],
       responses: {
-        200: { description: "Community fetched successfully" },
+        200: {
+          description: "Community fetched successfully",
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  success: { type: "boolean", example: true },
+                  data: {
+                    type: "object",
+                    properties: {
+                      community: {
+                        type: "object",
+                        properties: {
+                          _id: { type: "string" },
+                          name: { type: "string", example: "Gurgaon Runners" },
+                          description: { type: "string" },
+                          city: { type: "string", example: "Gurugram" },
+                          isPrivate: { type: "boolean", example: false },
+                          memberCount: { type: "integer", example: 12 },
+                          maxMembers: { type: "integer", example: 100 },
+                          isMember: { type: "boolean", example: true },
+                          isAdmin: {
+                            type: "boolean",
+                            example: false,
+                            description: "Only present for members",
+                          },
+                          members: {
+                            type: "array",
+                            description:
+                              "Members only — omitted for non-members",
+                            items: { type: "object" },
+                          },
+                          joinRequests: {
+                            type: "array",
+                            description:
+                              "Admin only — omitted for members and non-members",
+                            items: { type: "object" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         401: { description: "Unauthorized" },
         404: { description: "Community not found" },
       },
@@ -149,34 +340,34 @@ export const communitySwaggerDocs = {
   },
 
   "/api/community/{communityId}/join-requests": {
-  get: {
-    summary: "Get pending join requests (admin only)",
-    tags: ["Community"],
-    security: [{ bearerAuth: [] }],
-    parameters: [
-      {
-        name: "communityId",
-        in: "path",
-        required: true,
-        schema: {
-          type: "string",
-          example: "6a34aa15f585c7dfc43336a4",
+    get: {
+      summary: "Get pending join requests (admin only)",
+      tags: ["Community"],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: "communityId",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+            example: "6a34aa15f585c7dfc43336a4",
+          },
         },
-      },
-    ],
-    responses: {
-      200: {
-        description: "Join requests fetched successfully",
-      },
-      403: {
-        description: "Only admin can view join requests",
-      },
-      404: {
-        description: "Community not found",
+      ],
+      responses: {
+        200: {
+          description: "Join requests fetched successfully",
+        },
+        403: {
+          description: "Only admin can view join requests",
+        },
+        404: {
+          description: "Community not found",
+        },
       },
     },
   },
-},
 
   "/api/community/{communityId}/leave": {
     delete: {
@@ -199,64 +390,64 @@ export const communitySwaggerDocs = {
   },
 
   "/api/community/{communityId}/join-requests/{userId}": {
-  patch: {
-    summary: "Accept or reject a join request (admin only)",
-    tags: ["Community"],
-    security: [{ bearerAuth: [] }],
-    parameters: [
-      {
-        name: "communityId",
-        in: "path",
-        required: true,
-        schema: {
-          type: "string",
-          example: "6a34aa15f585c7dfc43336a4",
-        },
-      },
-      {
-        name: "userId",
-        in: "path",
-        required: true,
-        schema: {
-          type: "string",
-          example: "687ab12345f585c7dfc43336",
-        },
-      },
-    ],
-    requestBody: {
-      required: true,
-      content: {
-        "application/json": {
+    patch: {
+      summary: "Accept or reject a join request (admin only)",
+      tags: ["Community"],
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: "communityId",
+          in: "path",
+          required: true,
           schema: {
-            type: "object",
-            required: ["action"],
-            properties: {
-              action: {
-                type: "string",
-                enum: ["accepted", "rejected"],
-                example: "accepted",
+            type: "string",
+            example: "6a34aa15f585c7dfc43336a4",
+          },
+        },
+        {
+          name: "userId",
+          in: "path",
+          required: true,
+          schema: {
+            type: "string",
+            example: "687ab12345f585c7dfc43336",
+          },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: {
+              type: "object",
+              required: ["action"],
+              properties: {
+                action: {
+                  type: "string",
+                  enum: ["accepted", "rejected"],
+                  example: "accepted",
+                },
               },
             },
           },
         },
       },
-    },
-    responses: {
-      200: {
-        description: "Request processed successfully",
-      },
-      400: {
-        description: "Invalid action",
-      },
-      403: {
-        description: "Only admin can accept/reject requests",
-      },
-      404: {
-        description: "Join request not found",
+      responses: {
+        200: {
+          description: "Request processed successfully",
+        },
+        400: {
+          description: "Invalid action",
+        },
+        403: {
+          description: "Only admin can accept/reject requests",
+        },
+        404: {
+          description: "Join request not found",
+        },
       },
     },
   },
-},
 
   "/api/community/{communityId}/messages": {
     get: {
