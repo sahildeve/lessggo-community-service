@@ -9,6 +9,7 @@ import { getUsersByIds } from "./utils/authServiceClient.js";
 
 const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
+    path: "/api/community/socket.io",
     cors: {
       origin: process.env.ALLOWED_ORIGINS?.split(",") || "*",
       credentials: true,
