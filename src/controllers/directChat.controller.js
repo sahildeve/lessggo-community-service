@@ -2,61 +2,36 @@ import * as directChatService from "../services/directChat.service.js";
 import * as communityService from "../services/community.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
-import { createNotification } from "../utils/notification.js";
-import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import Community from "../models/Community.js";
 import { getDisplayName } from "../utils/displayName.js";
 import { getUsersByIds } from "../utils/authServiceClient.js";
 import redis from "../config/redis.js";
+import { publishEvent } from "../utils/eventPublisher.js"; // Naya import
 
 // ─── Send Chat Request
 export const sendChatRequest = async (req, res) => {
   try {
     const { toUserId, toUsername, requestMessage } = req.body;
+    const fallbackName = getDisplayName(req.user);
+
     const chat = await directChatService.sendChatRequest(
       req.user.sub,
-      getDisplayName(req.user),
-      getDisplayName(req.user), // sender fullName
+      fallbackName,
+      fallbackName,
       toUserId,
       toUsername || null,
-      req.body.toFullName || toUsername || null, // receiver fullName
+      req.body.toFullName || toUsername || null,
       requestMessage,
     );
 
-    // ── Sender ki poori info — receiver ko card dikhana hai
-    const infoMap = await getUsersByIds([req.user.sub]);
-    const info = infoMap[String(req.user.sub)];
-    const senderName = info?.fullName ?? getDisplayName(req.user);
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`user:${toUserId}`).emit("direct_chat_request", {
-        chatId: chat._id,
-        fromUserId: req.user.sub,
-        fromUsername: senderName,
-        from: {
-          userId: req.user.sub,
-          fullName: info?.fullName ?? null,
-          profilePicture: info?.profilePicture ?? null,
-          age: info?.age ?? null,
-          gender: info?.gender ?? null,
-          designation: info?.designation ?? null,
-          interests: info?.interests ?? [],
-        },
-        requestMessage,
-        message: `${senderName} sent you a chat request`,
-      });
-    }
-
-    await createNotification({
-      userId: toUserId,
-      type: "direct_chat_request",
-      title: "New Chat Request",
-      message: `${senderName} wants to chat with you`,
-      data: { chatId: chat._id, fromUserId: req.user.sub },
+    // ── Pub/Sub: Background worker will send Socket, DB Notification and Email ──
+    await publishEvent("DIRECT_CHAT_REQUESTED", {
+      chatId: chat._id,
+      fromUserId: req.user.sub,
+      fallbackName,
+      toUserId,
+      requestMessage,
     });
-
-    await sendChatRequestEmail(toUserId, senderName);
 
     return success(res, { chat }, "Chat request sent successfully", 201);
   } catch (err) {
@@ -73,54 +48,20 @@ export const respondToChatRequest = async (req, res) => {
   try {
     const { chatId } = req.params;
     const { action } = req.body;
+
     const chat = await directChatService.respondToChatRequest(
       chatId,
       req.user.sub,
       action,
     );
 
-    // ── Responder ki info — requester ko dikhani hai
-    const infoMap = await getUsersByIds([req.user.sub]);
-    const info = infoMap[String(req.user.sub)];
-    const responderName = info?.fullName ?? getDisplayName(req.user);
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`user:${chat.requestedBy}`).emit(
-        action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
-        {
-          chatId: chat._id,
-          fromUsername: responderName,
-          from: {
-            userId: req.user.sub,
-            fullName: info?.fullName ?? null,
-            profilePicture: info?.profilePicture ?? null,
-            age: info?.age ?? null,
-            gender: info?.gender ?? null,
-            designation: info?.designation ?? null,
-            interests: info?.interests ?? [],
-          },
-          message:
-            action === "accepted"
-              ? `${responderName} accepted your chat request`
-              : `${responderName} rejected your chat request`,
-        },
-      );
-    }
-
-    await createNotification({
-      userId: chat.requestedBy,
-      type:
-        action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
-      title:
-        action === "accepted"
-          ? "Chat Request Accepted!"
-          : "Chat Request Rejected",
-      message:
-        action === "accepted"
-          ? `${responderName} accepted your chat request`
-          : `${responderName} rejected your chat request`,
-      data: { chatId: chat._id },
+    // ── Pub/Sub ──
+    await publishEvent("DIRECT_CHAT_RESPONDED", {
+      chatId: chat._id,
+      responderId: req.user.sub,
+      requesterId: chat.requestedBy,
+      fallbackName: getDisplayName(req.user),
+      action,
     });
 
     return success(res, { chat }, `Chat request ${action}`);
@@ -259,23 +200,18 @@ export const getPendingRequests = async (req, res) => {
 export const withdrawDirectChatRequest = async (req, res) => {
   try {
     const { chatId } = req.params;
-
     const { otherUser } = await directChatService.withdrawDirectChatRequest(
       chatId,
       req.user.sub,
     );
 
-    const io = req.app.get("io");
-    if (io && otherUser) {
-      io.to(`user:${otherUser.userId.toString()}`).emit(
-        "direct_chat_withdrawn",
-        {
-          chatId,
-          byUserId: req.user.sub,
-          byUsername: getDisplayName(req.user),
-          message: `${getDisplayName(req.user)} withdrew the chat`,
-        },
-      );
+    if (otherUser) {
+      await publishEvent("DIRECT_CHAT_WITHDRAWN", {
+        chatId,
+        withdrawerId: req.user.sub,
+        withdrawerName: getDisplayName(req.user),
+        otherUserId: otherUser.userId,
+      });
     }
 
     return success(res, {}, "Chat withdrawn successfully");

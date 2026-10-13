@@ -1,9 +1,9 @@
 import * as communityService from "../services/community.service.js";
 import { success, error } from "../utils/response.js";
 import logger from "../utils/logger.js";
-import { createNotification } from "../utils/notification.js";
 import { getDisplayName } from "../utils/displayName.js";
-import { getUsersByIds } from "../utils/authServiceClient.js";
+import { getUsersByIds } from "../utils/authServiceClient.js"; // GET APIs ke liye chahiye
+import { publishEvent } from "../utils/eventPublisher.js"; // Naya import
 
 // ─── Create Community
 export const createCommunity = async (req, res) => {
@@ -15,10 +15,7 @@ export const createCommunity = async (req, res) => {
     );
     return success(res, { community }, "Community created successfully", 201);
   } catch (err) {
-    logger.error("Create community error:", {
-      message: err.message,
-      stack: err.stack,
-    });
+    logger.error("Create community error:", { message: err.message, stack: err.stack });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -41,81 +38,31 @@ export const getMyCommunitites = async (req, res) => {
 export const joinCommunity = async (req, res) => {
   try {
     const { communityId } = req.params;
+    const fallbackName = getDisplayName(req.user);
+
     const { community, status } = await communityService.joinCommunity(
       communityId,
       req.user.sub,
-      getDisplayName(req.user),
+      fallbackName,
     );
 
-    // ── Joiner ki poori info — admin ko card dikhana hai
-    const infoMap = await getUsersByIds([req.user.sub]);
-    const info = infoMap[String(req.user.sub)];
-    const joinerName = info?.fullName ?? getDisplayName(req.user);
-
-    const joiner = {
-      userId: req.user.sub,
-      fullName: info?.fullName ?? null,
-      profilePicture: info?.profilePicture ?? null,
-      age: info?.age ?? null,
-      gender: info?.gender ?? null,
-      designation: info?.designation ?? null,
-      interests: info?.interests ?? [],
-    };
-
-    const io = req.app.get("io");
+    // ── Pub/Sub: Notify background worker ──
+    await publishEvent("COMMUNITY_JOIN_REQUESTED", {
+      communityId,
+      communityName: community.name,
+      adminId: community.createdBy.userId,
+      joinerId: req.user.sub,
+      fallbackName,
+      status, // "pending" ya "active"
+    });
 
     if (status === "pending") {
-      // Admin ko notify karo
-      if (io) {
-        io.to(`user:${community.createdBy.userId.toString()}`).emit(
-          "community_join_request",
-          {
-            communityId,
-            communityName: community.name,
-            userId: req.user.sub,
-            username: joinerName,
-            user: joiner,
-            message: `${joinerName} wants to join your community`,
-          },
-        );
-      }
-
-      await createNotification({
-        userId: community.createdBy.userId,
-        type: "community_join_request",
-        title: "New Join Request",
-        message: `${joinerName} wants to join "${community.name}"`,
-        data: { communityId, userId: req.user.sub },
-      });
-
       return success(
         res,
         { status: "pending" },
         "Join request sent, waiting for admin approval",
       );
     }
-
-    // Public — seedha join
-    await communityService.saveSystemMessage(
-      communityId,
-      `${joinerName} joined the community`,
-    );
-
-    if (io) {
-      io.to(`community_${communityId}`).emit("community_system_message", {
-        message: `${joinerName} joined the community`,
-        user: joiner,
-        timestamp: new Date(),
-      });
-    }
-
-    await createNotification({
-      userId: community.createdBy.userId,
-      type: "join_community",
-      title: "New Member Joined",
-      message: `${joinerName} joined "${community.name}"`,
-      data: { communityId, userId: req.user.sub },
-    });
 
     return success(
       res,
@@ -131,7 +78,7 @@ export const joinCommunity = async (req, res) => {
   }
 };
 
-// --- AdminRespondToJoinRequest
+// ─── Admin Respond To Join Request
 export const respondToJoinRequest = async (req, res) => {
   try {
     const { communityId, userId } = req.params;
@@ -149,55 +96,14 @@ export const respondToJoinRequest = async (req, res) => {
         action,
       );
 
-    const io = req.app.get("io");
-
-    // User ko realtime notify
-    if (io) {
-      io.to(`user:${userId}`).emit(
-        action === "accepted"
-          ? "community_join_accepted"
-          : "community_join_rejected",
-        {
-          communityId,
-          communityName: community.name,
-          message:
-            action === "accepted"
-              ? `Your request to join "${community.name}" was accepted!`
-              : `Your request to join "${community.name}" was rejected`,
-        },
-      );
-    }
-
-    await createNotification({
-      userId,
-      type:
-        action === "accepted"
-          ? "community_join_accepted"
-          : "community_join_rejected",
-      title:
-        action === "accepted"
-          ? "Join Request Accepted!"
-          : "Join Request Rejected",
-      message:
-        action === "accepted"
-          ? `Your request to join "${community.name}" was accepted!`
-          : `Your request to join "${community.name}" was rejected`,
-      data: { communityId },
+    // ── Pub/Sub: Background socket/notification/system message ──
+    await publishEvent("COMMUNITY_JOIN_RESPONDED", {
+      communityId,
+      communityName: community.name,
+      requesterId: userId,
+      requesterUsername: requestUser.username,
+      action,
     });
-
-    if (action === "accepted") {
-      await communityService.saveSystemMessage(
-        communityId,
-        `${requestUser.username} joined the community`,
-      );
-
-      if (io) {
-        io.to(`community_${communityId}`).emit("community_system_message", {
-          message: `${requestUser.username} joined the community`,
-          timestamp: new Date(),
-        });
-      }
-    }
 
     return success(res, { community }, `Request ${action} successfully`);
   } catch (err) {
@@ -205,26 +111,21 @@ export const respondToJoinRequest = async (req, res) => {
       message: err.message,
       stack: err.stack,
     });
-
     return error(res, err.message, err.status || 500);
   }
 };
 
-// getJoinRequests — admin ke liye
+// ─── Get Join Requests (As it is, because GET api)
 export const getJoinRequests = async (req, res) => {
   try {
     const { communityId } = req.params;
     const community = await communityService.getCommunity(communityId);
 
-    // Admin check
     const isAdmin = community.members.find(
       (m) => m.userId.toString() === req.user.sub && m.role === "admin",
     );
-    if (!isAdmin) {
-      return error(res, "Only admin can view join requests", 403);
-    }
+    if (!isAdmin) return error(res, "Only admin can view join requests", 403);
 
-    // ── Requesters ki poori info
     const requesterIds = community.joinRequests.map((r) => r.userId.toString());
     const infoMap = await getUsersByIds(requesterIds);
 
@@ -245,10 +146,7 @@ export const getJoinRequests = async (req, res) => {
 
     return success(
       res,
-      {
-        joinRequests,
-        count: joinRequests.length,
-      },
+      { joinRequests, count: joinRequests.length },
       "Join requests fetched",
     );
   } catch (err) {
@@ -269,28 +167,14 @@ export const leaveCommunity = async (req, res) => {
       req.user.sub,
     );
 
-    await communityService.saveSystemMessage(
+    // ── Pub/Sub: Send event ──
+    await publishEvent("COMMUNITY_LEFT", {
       communityId,
-      `${getDisplayName(req.user)} left the community`,
-    );
-
-    const io = req.app.get("io");
-    if (io) {
-      io.to(`community_${communityId}`).emit("community_system_message", {
-        message: `${getDisplayName(req.user)} left the community`,
-        timestamp: new Date(),
-      });
-    }
-
-    if (community.createdBy.userId.toString() !== req.user.sub) {
-      await createNotification({
-        userId: community.createdBy.userId,
-        type: "leave_community",
-        title: "Member Left",
-        message: `${getDisplayName(req.user)} left your community "${community.name}"`,
-        data: { communityId, userId: req.user.sub },
-      });
-    }
+      communityName: community.name,
+      adminId: community.createdBy.userId,
+      leaverId: req.user.sub,
+      leaverName: getDisplayName(req.user),
+    });
 
     return success(res, {}, "Left community successfully");
   } catch (err) {
@@ -311,28 +195,13 @@ export const deleteCommunity = async (req, res) => {
       req.user.sub,
     );
 
-    const io = req.app.get("io");
-
-    // Sab members ko notify karo (creator ko chhod ke)
-    for (const member of community.members) {
-      if (member.userId.toString() === req.user.sub) continue;
-
-      if (io) {
-        io.to(`user:${member.userId.toString()}`).emit("community_deleted", {
-          communityId,
-          communityName: community.name,
-          message: `"${community.name}" has been deleted by the admin`,
-        });
-      }
-
-      await createNotification({
-        userId: member.userId,
-        type: "community_deleted",
-        title: "Community Deleted",
-        message: `"${community.name}" has been deleted by the admin`,
-        data: { communityId },
-      });
-    }
+    // ── Pub/Sub: Send event ──
+    await publishEvent("COMMUNITY_DELETED", {
+      communityId,
+      communityName: community.name,
+      adminId: req.user.sub,
+      members: community.members,
+    });
 
     return success(res, {}, "Community deleted successfully");
   } catch (err) {
