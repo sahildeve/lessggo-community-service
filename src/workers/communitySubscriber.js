@@ -4,9 +4,9 @@ import { createNotification } from "../utils/notification.js";
 import { getUsersByIds } from "../utils/authServiceClient.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
 import * as communityService from "../services/community.service.js";
+import * as directChatService from "../services/directChat.service.js";
 
-const SUBSCRIPTION_NAME =
-  process.env.COMMUNITY_EVENTS_SUB || "community-events-sub";
+const SUBSCRIPTION_NAME = process.env.COMMUNITY_EVENTS_SUB || "community-events-sub";
 
 export const startCommunitySubscriber = (io) => {
   try {
@@ -21,14 +21,7 @@ export const startCommunitySubscriber = (io) => {
         // 1. COMMUNITY_JOIN_REQUESTED (Pending / Active)
         // ============================================
         if (eventType === "COMMUNITY_JOIN_REQUESTED") {
-          const {
-            communityId,
-            communityName,
-            adminId,
-            joinerId,
-            fallbackName,
-            status,
-          } = payload;
+          const { communityId, communityName, adminId, joinerId, fallbackName, status } = payload;
 
           const infoMap = await getUsersByIds([joinerId]);
           const info = infoMap[String(joinerId)];
@@ -46,17 +39,14 @@ export const startCommunitySubscriber = (io) => {
 
           if (status === "pending") {
             if (io) {
-              io.to(`user:${adminId.toString()}`).emit(
-                "community_join_request",
-                {
-                  communityId,
-                  communityName,
-                  userId: joinerId,
-                  username: joinerName,
-                  user: joiner,
-                  message: `${joinerName} wants to join your community`,
-                },
-              );
+              io.to(`user:${adminId.toString()}`).emit("community_join_request", {
+                communityId,
+                communityName,
+                userId: joinerId,
+                username: joinerName,
+                user: joiner,
+                message: `${joinerName} wants to join your community`,
+              });
             }
             await createNotification({
               userId: adminId,
@@ -66,20 +56,13 @@ export const startCommunitySubscriber = (io) => {
               data: { communityId, userId: joinerId },
             });
           } else {
-            // Public Community Join
-            await communityService.saveSystemMessage(
-              communityId,
-              `${joinerName} joined the community`,
-            );
+            await communityService.saveSystemMessage(communityId, `${joinerName} joined the community`);
             if (io) {
-              io.to(`community_${communityId}`).emit(
-                "community_system_message",
-                {
-                  message: `${joinerName} joined the community`,
-                  user: joiner,
-                  timestamp: new Date(),
-                },
-              );
+              io.to(`community_${communityId}`).emit("community_system_message", {
+                message: `${joinerName} joined the community`,
+                user: joiner,
+                timestamp: new Date(),
+              });
             }
             await createNotification({
               userId: adminId,
@@ -91,75 +74,53 @@ export const startCommunitySubscriber = (io) => {
           }
         }
 
+        // ============================================
         // 2. COMMUNITY_JOIN_RESPONDED (Accept/Reject)
+        // ============================================
         if (eventType === "COMMUNITY_JOIN_RESPONDED") {
-          const {
-            communityId,
-            communityName,
-            requesterId,
-            requesterUsername,
-            action,
-          } = payload;
+          const { communityId, communityName, requesterId, requesterUsername, action } = payload;
 
           if (io) {
             io.to(`user:${requesterId}`).emit(
-              action === "accepted"
-                ? "community_join_accepted"
-                : "community_join_rejected",
+              action === "accepted" ? "community_join_accepted" : "community_join_rejected",
               {
                 communityId,
                 communityName,
-                message:
-                  action === "accepted"
-                    ? `Your request to join "${communityName}" was accepted!`
-                    : `Your request to join "${communityName}" was rejected`,
-              },
+                message: action === "accepted"
+                  ? `Your request to join "${communityName}" was accepted!`
+                  : `Your request to join "${communityName}" was rejected`,
+              }
             );
           }
 
           await createNotification({
             userId: requesterId,
-            type:
-              action === "accepted"
-                ? "community_join_accepted"
-                : "community_join_rejected",
-            title:
-              action === "accepted"
-                ? "Join Request Accepted!"
-                : "Join Request Rejected",
-            message:
-              action === "accepted"
-                ? `Your request to join "${communityName}" was accepted!`
-                : `Your request to join "${communityName}" was rejected`,
+            type: action === "accepted" ? "community_join_accepted" : "community_join_rejected",
+            title: action === "accepted" ? "Join Request Accepted!" : "Join Request Rejected",
+            message: action === "accepted"
+              ? `Your request to join "${communityName}" was accepted!`
+              : `Your request to join "${communityName}" was rejected`,
             data: { communityId },
           });
 
           if (action === "accepted") {
-            await communityService.saveSystemMessage(
-              communityId,
-              `${requesterUsername} joined the community`,
-            );
+            await communityService.saveSystemMessage(communityId, `${requesterUsername} joined the community`);
             if (io) {
-              io.to(`community_${communityId}`).emit(
-                "community_system_message",
-                {
-                  message: `${requesterUsername} joined the community`,
-                  timestamp: new Date(),
-                },
-              );
+              io.to(`community_${communityId}`).emit("community_system_message", {
+                message: `${requesterUsername} joined the community`,
+                timestamp: new Date(),
+              });
             }
           }
         }
 
+        // ============================================
         // 3. COMMUNITY_LEFT
+        // ============================================
         if (eventType === "COMMUNITY_LEFT") {
-          const { communityId, communityName, adminId, leaverId, leaverName } =
-            payload;
+          const { communityId, communityName, adminId, leaverId, leaverName } = payload;
 
-          await communityService.saveSystemMessage(
-            communityId,
-            `${leaverName} left the community`,
-          );
+          await communityService.saveSystemMessage(communityId, `${leaverName} left the community`);
           if (io) {
             io.to(`community_${communityId}`).emit("community_system_message", {
               message: `${leaverName} left the community`,
@@ -178,7 +139,9 @@ export const startCommunitySubscriber = (io) => {
           }
         }
 
+        // ============================================
         // 4. COMMUNITY_DELETED
+        // ============================================
         if (eventType === "COMMUNITY_DELETED") {
           const { communityId, communityName, adminId, members } = payload;
 
@@ -186,14 +149,11 @@ export const startCommunitySubscriber = (io) => {
             if (member.userId.toString() === adminId.toString()) continue;
 
             if (io) {
-              io.to(`user:${member.userId.toString()}`).emit(
-                "community_deleted",
-                {
-                  communityId,
-                  communityName,
-                  message: `"${communityName}" has been deleted by the admin`,
-                },
-              );
+              io.to(`user:${member.userId.toString()}`).emit("community_deleted", {
+                communityId,
+                communityName,
+                message: `"${communityName}" has been deleted by the admin`,
+              });
             }
             await createNotification({
               userId: member.userId,
@@ -209,8 +169,7 @@ export const startCommunitySubscriber = (io) => {
         // 5. DIRECT_CHAT_REQUESTED
         // ============================================
         if (eventType === "DIRECT_CHAT_REQUESTED") {
-          const { chatId, fromUserId, fallbackName, toUserId, requestMessage } =
-            payload;
+          const { chatId, fromUserId, fallbackName, toUserId, requestMessage } = payload;
 
           const infoMap = await getUsersByIds([fromUserId]);
           const info = infoMap[String(fromUserId)];
@@ -246,7 +205,9 @@ export const startCommunitySubscriber = (io) => {
           await sendChatRequestEmail(toUserId, senderName);
         }
 
+        // ============================================
         // 6. DIRECT_CHAT_RESPONDED
+        // ============================================
         if (eventType === "DIRECT_CHAT_RESPONDED") {
           const { chatId, responderId, requesterId, fallbackName, action } = payload;
 
@@ -256,9 +217,7 @@ export const startCommunitySubscriber = (io) => {
 
           if (io) {
             io.to(`user:${requesterId}`).emit(
-              action === "accepted"
-                ? "direct_chat_accepted"
-                : "direct_chat_rejected",
+              action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
               {
                 chatId,
                 fromUsername: responderName,
@@ -271,33 +230,27 @@ export const startCommunitySubscriber = (io) => {
                   designation: info?.designation ?? null,
                   interests: info?.interests ?? [],
                 },
-                message:
-                  action === "accepted"
-                    ? `${responderName} accepted your chat request`
-                    : `${responderName} rejected your chat request`,
-              },
+                message: action === "accepted"
+                  ? `${responderName} accepted your chat request`
+                  : `${responderName} rejected your chat request`,
+              }
             );
           }
 
           await createNotification({
             userId: requesterId,
-            type:
-              action === "accepted"
-                ? "direct_chat_accepted"
-                : "direct_chat_rejected",
-            title:
-              action === "accepted"
-                ? "Chat Request Accepted!"
-                : "Chat Request Rejected",
-            message:
-              action === "accepted"
-                ? `${responderName} accepted your chat request`
-                : `${responderName} rejected your chat request`,
+            type: action === "accepted" ? "direct_chat_accepted" : "direct_chat_rejected",
+            title: action === "accepted" ? "Chat Request Accepted!" : "Chat Request Rejected",
+            message: action === "accepted"
+              ? `${responderName} accepted your chat request`
+              : `${responderName} rejected your chat request`,
             data: { chatId },
           });
         }
 
+        // ============================================
         // 7. DIRECT_CHAT_WITHDRAWN
+        // ============================================
         if (eventType === "DIRECT_CHAT_WITHDRAWN") {
           const { chatId, withdrawerId, withdrawerName, otherUserId } = payload;
 
@@ -311,29 +264,103 @@ export const startCommunitySubscriber = (io) => {
           }
         }
 
+        // ============================================
+        // 8. USER_PRESENCE_CHANGED (From Gateway Socket)
+        // ============================================
+        if (eventType === "USER_PRESENCE_CHANGED") {
+          const { userId, status, lastSeenAt } = payload;
+          const participantUserIds = await directChatService.getDirectChatParticipantIds(userId);
+
+          if (io) {
+            for (const participantUserId of participantUserIds) {
+              io.to(`user:${participantUserId}`).emit("user_status_changed", {
+                userId,
+                status,
+                lastSeenAt,
+              });
+            }
+          }
+        }
+
+        // ============================================
+        // 9. DIRECT CHAT MESSAGES & READ (From Gateway Socket)
+        // ============================================
+        if (eventType === "MARK_DIRECT_CHAT_READ") {
+          const { chatId, userId } = payload;
+          await directChatService.markDirectChatAsRead(chatId, userId);
+        }
+
+        if (eventType === "SEND_DIRECT_MESSAGE") {
+          const { chatId, userId, displayName, profilePicture, text } = payload;
+
+          const savedMsg = await directChatService.sendMessage(
+            chatId,
+            userId,
+            displayName,
+            text
+          );
+
+          if (io) {
+            io.to(`direct_${chatId}`).emit("new_direct_message", {
+              messageId: savedMsg._id,
+              chatId,
+              senderId: userId,
+              senderUsername: displayName,
+              senderFullName: displayName,
+              senderProfilePicture: profilePicture ?? null,
+              message: savedMsg.message,
+              timestamp: savedMsg.createdAt,
+            });
+          }
+        }
+
+        // ============================================
+        // 10. COMMUNITY CHAT MESSAGES & READ (From Gateway Socket)
+        // ============================================
+        if (eventType === "MARK_COMMUNITY_CHAT_READ") {
+          const { communityId, userId } = payload;
+          await communityService.markCommunityChatAsRead(communityId, userId);
+        }
+
+        if (eventType === "SEND_COMMUNITY_MESSAGE") {
+          const { communityId, userId, displayName, profilePicture, text } = payload;
+
+          const savedMsg = await communityService.sendMessage(
+            communityId,
+            userId,
+            displayName,
+            text
+          );
+
+          if (io) {
+            io.to(`community_${communityId}`).emit("new_community_message", {
+              messageId: savedMsg._id,
+              communityId,
+              senderId: userId,
+              senderUsername: displayName,
+              senderFullName: displayName,
+              senderProfilePicture: profilePicture ?? null,
+              message: savedMsg.message,
+              timestamp: savedMsg.createdAt,
+            });
+          }
+        }
+
         // Acknowledge the message
         message.ack();
-        logger.info(
-          `Processed community event: ${eventType} (MsgID: ${message.id})`,
-        );
+        logger.info(`Processed community event: ${eventType} (MsgID: ${message.id})`);
       } catch (err) {
-        logger.error(
-          `Error processing Community Pub/Sub message: ${err.message}`,
-        );
+        logger.error(`Error processing Community Pub/Sub message: ${err.message}`);
         message.nack();
       }
     });
 
     subscription.on("error", (error) => {
-      logger.error("Community Pub/Sub subscription error:", {
-        message: error.message,
-      });
+      logger.error("Community Pub/Sub subscription error:", { message: error.message });
     });
 
     logger.info(`Community Subscriber listening on ${SUBSCRIPTION_NAME}`);
   } catch (err) {
-    logger.error("Failed to start Community Subscriber:", {
-      message: err.message,
-    });
+    logger.error("Failed to start Community Subscriber:", { message: err.message });
   }
 };
