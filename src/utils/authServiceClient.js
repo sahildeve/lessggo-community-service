@@ -5,7 +5,13 @@ import logger from "./logger.js";
 const baseURL = process.env.AUTH_SERVICE_URL || "http://localhost:8080";
 const CACHE_TTL = 600; // 10 min
 
-const client = axios.create({ baseURL, timeout: 5000 });
+const client = axios.create({ 
+  baseURL, 
+  timeout: 5000,
+  headers: {
+    "x-internal-key": process.env.INTERNAL_SERVICE_KEY, // Auth service isko verify karegi
+  }
+});
 
 // ─── userIds → { userId: { username, fullName, profilePicture } }
 export const getUsersByIds = async (userIds) => {
