@@ -270,59 +270,16 @@ export const deleteCommunity = async (communityId, userId) => {
 };
 
 // ─── Get Community
-export const getCommunity = async (req, res) => {
-  try {
-    const { communityId } = req.params;
-    const community = await communityService.getCommunity(communityId);
+export const getCommunity = async (communityId) => {
+  const community = await Community.findById(communityId).lean();
 
-    const isMember = (community.members || []).some(
-      (m) => m.userId.toString() === req.user.sub,
-    );
-
-    const isAdmin = (community.members || []).some(
-      (m) => m.userId.toString() === req.user.sub && m.role === "admin",
-    );
-
-    // ── Non-members ko sirf basic info — members list aur requests nahi
-    if (!isMember) {
-      const { members, joinRequests, ...publicInfo } = community;
-
-      return success(
-        res,
-        {
-          community: {
-            ...publicInfo,
-            memberCount: (members || []).length,
-            isMember: false,
-          },
-        },
-        "Community fetched successfully",
-      );
-    }
-
-    // ── joinRequests sirf admin ko
-    const { joinRequests, ...rest } = community;
-
-    return success(
-      res,
-      {
-        community: {
-          ...rest,
-          ...(isAdmin ? { joinRequests } : {}),
-          memberCount: (community.members || []).length,
-          isMember: true,
-          isAdmin,
-        },
-      },
-      "Community fetched successfully",
-    );
-  } catch (err) {
-    logger.error("Get community error:", {
-      message: err.message,
-      stack: err.stack,
-    });
-    return error(res, err.message, err.status || 500);
+  if (!community) {
+    const err = new Error("Community not found");
+    err.status = 404;
+    throw err;
   }
+
+  return community;
 };
 
 // ─── Search Communities

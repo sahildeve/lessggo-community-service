@@ -218,7 +218,48 @@ export const getCommunity = async (req, res) => {
   try {
     const { communityId } = req.params;
     const community = await communityService.getCommunity(communityId);
-    return success(res, { community }, "Community fetched successfully");
+
+    const isMember = (community.members || []).some(
+      (m) => m.userId.toString() === req.user.sub,
+    );
+
+    const isAdmin = (community.members || []).some(
+      (m) => m.userId.toString() === req.user.sub && m.role === "admin",
+    );
+
+    // ── Non-members ko sirf basic info — members list aur requests nahi
+    if (!isMember) {
+      const { members, joinRequests, ...publicInfo } = community;
+
+      return success(
+        res,
+        {
+          community: {
+            ...publicInfo,
+            memberCount: (members || []).length,
+            isMember: false,
+          },
+        },
+        "Community fetched successfully",
+      );
+    }
+
+    // ── joinRequests sirf admin ko
+    const { joinRequests, ...rest } = community;
+
+    return success(
+      res,
+      {
+        community: {
+          ...rest,
+          ...(isAdmin ? { joinRequests } : {}),
+          memberCount: (community.members || []).length,
+          isMember: true,
+          isAdmin,
+        },
+      },
+      "Community fetched successfully",
+    );
   } catch (err) {
     logger.error("Get community error:", {
       message: err.message,
