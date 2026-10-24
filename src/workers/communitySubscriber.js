@@ -1,5 +1,6 @@
 import pubsub from "../config/pubsub.js";
 import logger from "../utils/logger.js";
+import { handleSubscriberError } from "../utils/subscriberError.js";
 import { createNotification } from "../utils/notification.js";
 import { getUsersByIds } from "../utils/authServiceClient.js";
 import { sendChatRequestEmail } from "../utils/emailNotification.js";
@@ -431,10 +432,12 @@ export const startCommunitySubscriber = (io) => {
           `Processed community event: ${eventType} (MsgID: ${message.id})`,
         );
       } catch (err) {
-        logger.error(
-          `Error processing Community Pub/Sub message: ${err.message}`,
+        handleSubscriberError(
+          message,
+          err,
+          logger,
+          "community-service:communitySubscriber",
         );
-        message.nack();
       }
     });
 
