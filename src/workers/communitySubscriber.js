@@ -1,4 +1,5 @@
 import pubsub from "../config/pubsub.js";
+import redis from "../config/redis.js";
 import logger from "../utils/logger.js";
 import { handleSubscriberError } from "../utils/subscriberError.js";
 import {
@@ -15,6 +16,8 @@ import * as directChatService from "../services/directChat.service.js";
 import Community from "../models/Community.js";
 import CommunityMessage from "../models/CommunityMessage.js";
 import DirectChat from "../models/DirectChat.js";
+import DirectMessage from "../models/DirectMessage.js";
+import Notification from "../models/Notification.js";
 
 const SUBSCRIPTION_NAME =
   process.env.COMMUNITY_EVENTS_SUB || "community-events-sub";
@@ -412,31 +415,131 @@ export const startCommunitySubscriber = (io) => {
 
         // ... existing event handlers
 
+        // Rule: personal data → delete; user ki banayi communities → rakho, anonymize;
+        // dusron ke content me user ki entry → hatao
         if (eventType === "USER_DELETED") {
           const { userId } = payload;
+          const tag = `[USER_DELETED ${userId}]`;
 
           // 1. User ko saari communities se remove karo
-          await Community.updateMany(
+          const membersPulled = await Community.updateMany(
             { "members.userId": userId },
             { $pull: { members: { userId: userId } } },
           );
+          logger.info(
+            `${tag} Community member entries removed: ${membersPulled.modifiedCount}`,
+          );
 
-          // 2. User ke saare messages ko "Deleted User" se replace kar do (Anonymize)
+          //    …aur pending join requests se bhi
+          const requestsPulled = await Community.updateMany(
+            { "joinRequests.userId": userId },
+            { $pull: { joinRequests: { userId } } },
+          );
+          logger.info(
+            `${tag} Community join requests removed: ${requestsPulled.modifiedCount}`,
+          );
+
+          // 2. User ki banayi communities — delete nahi (members ki history), sirf
+          //    anonymize. isActive mat chhuo — wo members ki "My Communities" list se bhi
+          //    hata deta hai. Sole-admin problem admin transfer feature se solve hogi
+          const ownCommunities = await Community.updateMany(
+            { "createdBy.userId": userId },
+            { $set: { "createdBy.username": "Deleted User" } },
+          );
+          logger.info(
+            `${tag} Own communities anonymized: ${ownCommunities.modifiedCount}`,
+          );
+
+          // 3. User ke saare messages ko "Deleted User" se replace kar do (Anonymize)
           // (Privacy laws ke mutabiq personal data hatana zaroori hai, message text rakh sakte ho context ke liye, ya message bhi delete kar sakte ho)
-          await CommunityMessage.updateMany(
+          const communityMessages = await CommunityMessage.updateMany(
             { senderId: userId },
             {
               $set: {
                 senderUsername: "Deleted User",
-                senderFullName: "Deleted User",
                 message:
                   "This message was removed because the user deleted their account.",
               },
             },
           );
+          logger.info(
+            `${tag} CommunityMessage anonymized: ${communityMessages.modifiedCount}`,
+          );
 
-          // 3. User ki direct chats delete kar do
-          await DirectChat.deleteMany({ participants: userId });
+          // 4. Dusron ke community messages se is user ke read receipts hatao
+          const communitySeenPulled = await CommunityMessage.updateMany(
+            { "seenBy.userId": userId },
+            { $pull: { seenBy: { userId } } },
+          );
+          logger.info(
+            `${tag} CommunityMessage seenBy entries removed: ${communitySeenPulled.modifiedCount}`,
+          );
+
+          // 5a. Direct chats delete nahi — dusre user ki conversation history hai.
+          //     Participant entry hatao bhi nahi (dusre ko dikhna chahiye kisse baat ki thi),
+          //     sirf is user ki identity anonymize. lastMessage preview bhi clear
+          const directChats = await DirectChat.updateMany(
+            { "participants.userId": userId },
+            {
+              $set: {
+                "participants.$[p].username": "Deleted User",
+                "participants.$[p].fullName": "Deleted User",
+                lastMessage: null,
+              },
+            },
+            { arrayFilters: [{ "p.userId": userId }] },
+          );
+          logger.info(
+            `${tag} DirectChat participant anonymized: ${directChats.modifiedCount}`,
+          );
+
+          //     User ne jo chat requests bheji thi unka message — user ka likha free text
+          const requestMessages = await DirectChat.updateMany(
+            { requestedBy: userId },
+            { $set: { requestMessage: null } },
+          );
+          logger.info(
+            `${tag} DirectChat requestMessage cleared: ${requestMessages.modifiedCount}`,
+          );
+
+          // 5b. User ke direct messages anonymize
+          const directMessages = await DirectMessage.updateMany(
+            { senderId: userId },
+            {
+              $set: {
+                senderUsername: "Deleted User",
+                message:
+                  "This message was removed because the user deleted their account.",
+              },
+            },
+          );
+          logger.info(
+            `${tag} DirectMessage anonymized: ${directMessages.modifiedCount}`,
+          );
+
+          // 5c. Dusre user ke direct messages se is user ke read receipts hatao
+          const directSeenPulled = await DirectMessage.updateMany(
+            { "seenBy.userId": userId },
+            { $pull: { seenBy: { userId } } },
+          );
+          logger.info(
+            `${tag} DirectMessage seenBy entries removed: ${directSeenPulled.modifiedCount}`,
+          );
+
+          // 6. User ki notifications
+          const notifications = await Notification.deleteMany({ userId });
+          logger.info(
+            `${tag} Notification deleted: ${notifications.deletedCount}`,
+          );
+
+          // 7. Redis: user cache + presence (key gateway-service/src/socket.js jaisa)
+          const [cacheDeleted, presenceDeleted] = await Promise.all([
+            redis.del(`user_info:${userId}`),
+            redis.del(`user_status:${userId}`),
+          ]);
+          logger.info(
+            `${tag} Redis cleared: user_info ${cacheDeleted}, user_status ${presenceDeleted}`,
+          );
 
           logger.info(
             `Wiped out all community data for deleted user: ${userId}`,
