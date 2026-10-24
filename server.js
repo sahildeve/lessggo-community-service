@@ -17,6 +17,11 @@ const start = async () => {
     app.set("io", io);
 
     startCommunitySubscriber(io);
+    // auth-events topic ka USER_DELETED — alag subscription, same handler
+    startCommunitySubscriber(
+      io,
+      process.env.USER_DELETED_SUB || "community-user-deleted-sub",
+    );
 
     httpServer.listen(PORT, () => {
       logger.info(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
