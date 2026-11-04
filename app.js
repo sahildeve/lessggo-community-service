@@ -9,11 +9,39 @@ import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./src/config/swagger.js";
 import notificationRoutes from "./src/routes/notification.routes.js";
 import { gatewayOnly } from "./src/middlewares/gatewayOnly.js";
+import mongoose from "mongoose";
+import redis from "./src/config/redis.js";
 
 const app = express();
 
 app.set("trust proxy", 1);
 app.use(helmet());
+
+// ─── Readiness (COMM-27): checks MongoDB and Redis, for monitoring and alerts.
+// /health stays dependency-free so a short blip never restarts every instance.
+const withTimeout = (promise, ms) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("timeout")), ms),
+    ),
+  ]);
+
+app.get("/ready", async (_req, res) => {
+  const [mongo, cache] = await Promise.allSettled([
+    // Wrapped so "not connected yet" (db undefined) counts as down, not a crash.
+    withTimeout((async () => mongoose.connection.db.admin().ping())(), 2000),
+    withTimeout(redis.ping(), 2000),
+  ]);
+  const checks = {
+    mongo: mongo.status === "fulfilled" ? "ok" : "down",
+    redis: cache.status === "fulfilled" ? "ok" : "down",
+  };
+  const ready = checks.mongo === "ok" && checks.redis === "ok";
+  res
+    .status(ready ? 200 : 503)
+    .json({ status: ready ? "READY" : "NOT_READY", ...checks });
+});
 
 // ─── Health Check (open for Cloud Run and monitoring) ───────
 app.get("/health", (_req, res) => {
