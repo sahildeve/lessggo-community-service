@@ -17,9 +17,14 @@ const directChatSchema = new mongoose.Schema(
     // ─── Request status
     status: {
       type: String,
-      enum: ["pending", "accepted", "rejected", "blocked"],
+      enum: ["pending", "accepted", "rejected", "blocked", "ended"],
       default: "pending",
     },
+
+    // Soft leave (COMM-13): who ended an accepted chat and when.
+    // Messages are kept for safety reports instead of being deleted.
+    endedBy: { type: mongoose.Schema.Types.ObjectId, default: null },
+    endedAt: { type: Date, default: null },
 
     // ─── Kisne request bheja
     requestedBy: {

@@ -47,10 +47,12 @@ export const sendChatRequest = async (
       err.status = 409;
       throw err;
     }
-    if (existing.status === "rejected") {
-      // Rejected tha — dobara request allow karo
+    if (existing.status === "rejected" || existing.status === "ended") {
+      // Rejected ya ended tha — dobara request allow karo
       existing.status = "pending";
       existing.requestedBy = requestedBy;
+      existing.endedBy = null;
+      existing.endedAt = null;
 
       // Latest user snapshot update karo
       existing.participants = [
@@ -405,7 +407,10 @@ export const getSentRequests = async (userId) => {
   });
 };
 
-// ─── Withdraw Direct Chat Request
+// ─── Withdraw Direct Chat Request / Leave Chat (COMM-13)
+// Pending request: only the sender can take it back, and it is deleted
+// (nothing was said yet). Accepted chat: "leave" ends it for both users but
+// keeps the messages, so a harasser cannot erase evidence before a report.
 export const withdrawDirectChatRequest = async (chatId, userId) => {
   const chat = await DirectChat.findById(chatId);
 
@@ -429,10 +434,28 @@ export const withdrawDirectChatRequest = async (chatId, userId) => {
     (p) => p.userId.toString() !== userId,
   );
 
-  await DirectMessage.deleteMany({ chatId: chat._id });
-  await DirectChat.findByIdAndDelete(chatId);
+  if (chat.status === "pending") {
+    if (chat.requestedBy?.toString() !== userId) {
+      const err = new Error("Only the sender can withdraw this request");
+      err.status = 403;
+      throw err;
+    }
+    await DirectMessage.deleteMany({ chatId: chat._id });
+    await DirectChat.deleteOne({ _id: chat._id });
+    return { otherUser };
+  }
 
-  return { otherUser };
+  if (chat.status === "accepted") {
+    chat.status = "ended";
+    chat.endedBy = userId;
+    chat.endedAt = new Date();
+    await chat.save();
+    return { otherUser };
+  }
+
+  const err = new Error("This chat is already closed");
+  err.status = 409;
+  throw err;
 };
 
 // ─── Get all userIds jinke saath current user ka chat hai (accepted only)

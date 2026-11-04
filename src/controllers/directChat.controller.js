@@ -205,6 +205,9 @@ export const withdrawDirectChatRequest = async (req, res) => {
       req.user.sub,
     );
 
+    // Chat is closed: stop live messages and typing for both users (GW-01).
+    req.app.get("io")?.in(`direct_${chatId}`).socketsLeave(`direct_${chatId}`);
+
     if (otherUser) {
       await publishEvent("DIRECT_CHAT_WITHDRAWN", {
         chatId,
