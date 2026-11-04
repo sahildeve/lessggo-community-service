@@ -43,7 +43,6 @@ export const createCommunity = async (
   return community;
 };
 
-// ─── Join Community
 export const joinCommunity = async (communityId, userId, username) => {
   const community = await Community.findById(communityId);
 
@@ -73,38 +72,51 @@ export const joinCommunity = async (communityId, userId, username) => {
     throw err;
   }
 
-  // ── Private community
+  // ── Private community: add the request atomically, once (COMM-23)
   if (community.isPrivate) {
-    const alreadyRequested = community.joinRequests.find(
-      (r) => r.userId.toString() === userId,
+    const result = await Community.updateOne(
+      {
+        _id: communityId,
+        isActive: true,
+        "members.userId": { $ne: userId },
+        "joinRequests.userId": { $ne: userId },
+      },
+      { $push: { joinRequests: { userId, username, requestedAt: new Date() } } },
     );
-    if (alreadyRequested) {
+    if (result.modifiedCount === 0) {
       const err = new Error("Join request already sent");
       err.status = 409;
       throw err;
     }
-
-    community.joinRequests.push({
-      userId,
-      username,
-      requestedAt: new Date(),
-    });
-    await community.save();
     return { community, status: "pending" };
   }
 
-  // ── Public community
-  community.members.push({
-    userId,
-    username,
-    role: "member",
-    joinedAt: new Date(),
-  });
-  await community.save();
-  return { community, status: "active" };
+  // ── Public community: the database checks "not a member yet" and
+  // "not full" in the same operation, so parallel joins cannot overfill it
+  // or add the same user twice (COMM-23).
+  const result = await Community.updateOne(
+    {
+      _id: communityId,
+      isActive: true,
+      "members.userId": { $ne: userId },
+      $expr: { $lt: [{ $size: "$members" }, "$maxMembers"] },
+    },
+    {
+      $push: {
+        members: { userId, username, role: "member", joinedAt: new Date() },
+      },
+    },
+  );
+  if (result.modifiedCount === 0) {
+    const err = new Error("Community is full or you are already a member");
+    err.status = 409;
+    throw err;
+  }
+
+  return { community: await Community.findById(communityId), status: "active" };
 };
 
-// ---- Admin repondeToJoinRequest
+// ---- Admin respondToJoinRequest
 export const respondToJoinRequest = async (
   communityId,
   adminUserId,
