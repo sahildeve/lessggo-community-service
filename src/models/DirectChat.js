@@ -46,6 +46,13 @@ directChatSchema.index(
   { "participants.0.userId": 1, "participants.1.userId": 1 },
   { unique: true },
 );
+// Any-position participant lookups: my-chats, room join check, presence (COMM-06)
+directChatSchema.index({
+  "participants.userId": 1,
+  status: 1,
+  lastMessageAt: -1,
+});
+directChatSchema.index({ requestedBy: 1, status: 1 });
 
 const DirectChat = mongoose.model("DirectChat", directChatSchema);
 export default DirectChat;

@@ -63,6 +63,9 @@ const communitySchema = new mongoose.Schema(
 communitySchema.index({ city: 1 });
 communitySchema.index({ "createdBy.userId": 1 });
 communitySchema.index({ name: "text", description: "text" }); // search ke liye
+// Membership lookups: my-communities, room join check, unread counts
+communitySchema.index({ "members.userId": 1, isActive: 1 });
+communitySchema.index({ "joinRequests.userId": 1 });
 
 const Community = mongoose.model("Community", communitySchema);
 export default Community;
