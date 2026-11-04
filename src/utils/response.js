@@ -1,4 +1,5 @@
 import logger from "./logger.js";
+import * as Sentry from "@sentry/node";
 
 export const success = (
   res,
@@ -17,6 +18,7 @@ export const error = (
   // Log the real message, return a safe one.
   if (statusCode >= 500) {
     logger.error("Server error response", { status: statusCode, message });
+        Sentry.captureMessage(`${statusCode}: ${message}`, "error");
     message =
       statusCode === 503
         ? "Service temporarily unavailable. Please try again."
