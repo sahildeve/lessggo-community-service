@@ -1,5 +1,6 @@
 import "dotenv/config";
 import express from "express";
+import logger from "./src/utils/logger.js";
 import helmet from "helmet";
 import morgan from "morgan";
 import directChatRoutes from "./src/routes/directChat.routes.js";
@@ -43,11 +44,22 @@ if (process.env.NODE_ENV !== "production") {
 
 app.use("/api/community/notifications", notificationRoutes);
 
-// ─── Global Error Handler
+// ─── 404 for unknown routes (JSON, not Express's HTML page)
+app.use((_req, res) => {
+  res.status(404).json({ success: false, message: "Route not found" });
+});
+
+// ─── Global Error Handler (COMM-25): real message only for client errors
+// eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
-  res.status(err.status || 500).json({
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) {
+    logger.error("Unhandled error", { message: err.message, stack: err.stack });
+  }
+  res.status(status).json({
     success: false,
-    message: err.message || "Internal server error",
+    message:
+      status < 500 ? err.message : "Something went wrong. Please try again.",
   });
 });
 
