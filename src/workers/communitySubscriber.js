@@ -3,7 +3,7 @@ import redis from "../config/redis.js";
 import logger from "../utils/logger.js";
 import { handleSubscriberError } from "../utils/subscriberError.js";
 import {
-  alreadyProcessed,
+  claimMessage,
   markProcessed,
   releaseProcessed,
 } from "../utils/messageDedupe.js";
@@ -46,12 +46,21 @@ export const startCommunitySubscriber = (
         const parsedData = JSON.parse(message.data.toString());
         const { eventType, payload } = parsedData;
 
-        // ── Duplicate delivery (Pub/Sub at-least-once) — pehle hi process ho chuka
-        if (await alreadyProcessed(message.id, SUBSCRIBER_CONTEXT)) {
-          logger.info(
-            `Skipped duplicate community event: ${eventType} (MsgID: ${message.id})`,
-          );
+        // ── Duplicate delivery (Pub/Sub at-least-once)
+        const claim = await claimMessage(message.id, SUBSCRIBER_CONTEXT);
+        if (claim === "done") {
+          // Really handled already: safe to ack.
           message.ack();
+          return;
+        }
+        if (claim === "in_progress") {
+          // Another worker has it, or one died mid-way (COMM-09). Never ack:
+          // let Pub/Sub retry after backoff so the message is not lost.
+          logger.warn("Community event still in progress, retrying later", {
+            eventType,
+            messageId: message.id,
+          });
+          message.nack();
           return;
         }
 
