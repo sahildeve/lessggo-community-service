@@ -1,6 +1,13 @@
 import { Router } from "express";
 import { protect } from "../middlewares/auth.middleware.js";
-
+import { validate } from "../middlewares/validate.js";
+import {
+  searchSchema,
+  createCommunitySchema,
+  communityIdSchema,
+  respondJoinRequestSchema,
+  communityMessagesSchema,
+} from "../validators/community.validator.js";
 import {
   createCommunity,
   joinCommunity,

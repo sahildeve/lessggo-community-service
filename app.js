@@ -7,7 +7,6 @@ import directChatRoutes from "./src/routes/directChat.routes.js";
 import communityRoutes from "./src/routes/community.routes.js";
 import swaggerUi from "swagger-ui-express";
 import swaggerSpec from "./src/config/swagger.js";
-import notificationRoutes from "./src/routes/notification.routes.js";
 import { gatewayOnly } from "./src/middlewares/gatewayOnly.js";
 import mongoose from "mongoose";
 import redis from "./src/config/redis.js";
@@ -71,7 +70,6 @@ if (process.env.NODE_ENV !== "production") {
   app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 }
 
-app.use("/api/community/notifications", notificationRoutes);
 
 // ─── 404 for unknown routes (JSON, not Express's HTML page)
 app.use((_req, res) => {

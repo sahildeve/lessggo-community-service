@@ -8,6 +8,8 @@ if (process.env.SENTRY_DSN) {
     environment: process.env.NODE_ENV || "development",
     tracesSampleRate: 0.05,
     sendDefaultPii: false,
+        // Lets errors be filtered per service even when projects share a DSN.
+    initialScope: { tags: { service: "community-service" } },
     // Never send tokens, internal keys or request bodies (chat text, names).
     beforeSend(event) {
       if (event.request) {
