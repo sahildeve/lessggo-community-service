@@ -25,9 +25,19 @@ const SUBSCRIPTION_NAME =
 // Dedupe claim aur release dono me same hona chahiye
 const SUBSCRIBER_CONTEXT = "community-service:communitySubscriber";
 
+// ── Room joins (GW-01 / COMM-01) ──
+// The gateway no longer joins chat rooms itself. It asks here, and we join the
+// socket only if the user really is a member.
+const MAX_JOIN_AGE_MS = 60_000; // ignore join requests that waited too long
+const isObjectIdString = (value) =>
+  typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
+
 // subscriptionName param — same handler do subscriptions pe chalta hai
 // (community-events + auth-events ka USER_DELETED); eventType pe branch karta hai
-export const startCommunitySubscriber = (io, subscriptionName = SUBSCRIPTION_NAME) => {
+export const startCommunitySubscriber = (
+  io,
+  subscriptionName = SUBSCRIPTION_NAME,
+) => {
   try {
     const subscription = pubsub.subscription(subscriptionName);
 
@@ -354,10 +364,82 @@ export const startCommunitySubscriber = (io, subscriptionName = SUBSCRIPTION_NAM
           }
         }
 
+        // 8b. ROOM JOIN REQUESTS (From Gateway Socket) — membership checked here
+        if (eventType === "DIRECT_ROOM_JOIN_REQUESTED") {
+          const { chatId, userId, socketId, requestedAt } = payload;
+          const fresh = Date.now() - Number(requestedAt) <= MAX_JOIN_AGE_MS;
+          if (
+            io &&
+            fresh &&
+            isObjectIdString(chatId) &&
+            isObjectIdString(userId) &&
+            typeof socketId === "string"
+          ) {
+            const chat = await DirectChat.findOne(
+              { _id: chatId, "participants.userId": userId },
+              { status: 1 },
+            ).lean();
+
+            if (chat?.status === "accepted") {
+              io.in(socketId).socketsJoin(`direct_${chatId}`);
+              await directChatService.markDirectChatAsRead(chatId, userId);
+              io.to(socketId).emit("direct_chat_joined", { chatId });
+            } else {
+              io.to(socketId).emit("room_join_denied", {
+                type: "direct",
+                id: chatId,
+                reason: chat ? "not_accepted" : "not_member",
+              });
+            }
+          }
+        }
+
+        if (eventType === "COMMUNITY_ROOM_JOIN_REQUESTED") {
+          const { communityId, userId, socketId, requestedAt } = payload;
+          const fresh = Date.now() - Number(requestedAt) <= MAX_JOIN_AGE_MS;
+          if (
+            io &&
+            fresh &&
+            isObjectIdString(communityId) &&
+            isObjectIdString(userId) &&
+            typeof socketId === "string"
+          ) {
+            const isMember = await Community.exists({
+              _id: communityId,
+              isActive: true,
+              "members.userId": userId,
+            });
+
+            if (isMember) {
+              io.in(socketId).socketsJoin(`community_${communityId}`);
+              await communityService.markCommunityChatAsRead(
+                communityId,
+                userId,
+              );
+              io.to(socketId).emit("community_joined", { communityId });
+            } else {
+              io.to(socketId).emit("room_join_denied", {
+                type: "community",
+                id: communityId,
+                reason: "not_member",
+              });
+            }
+          }
+        }
+
         // 9. DIRECT CHAT MESSAGES & READ (From Gateway Socket)
         if (eventType === "MARK_DIRECT_CHAT_READ") {
           const { chatId, userId } = payload;
-          await directChatService.markDirectChatAsRead(chatId, userId);
+          // Only participants may mark a chat read (COMM-11).
+          if (isObjectIdString(chatId) && isObjectIdString(userId)) {
+            const isParticipant = await DirectChat.exists({
+              _id: chatId,
+              "participants.userId": userId,
+            });
+            if (isParticipant) {
+              await directChatService.markDirectChatAsRead(chatId, userId);
+            }
+          }
         }
 
         if (eventType === "SEND_DIRECT_MESSAGE") {
@@ -387,7 +469,19 @@ export const startCommunitySubscriber = (io, subscriptionName = SUBSCRIPTION_NAM
         // 10. COMMUNITY CHAT MESSAGES & READ (From Gateway Socket)
         if (eventType === "MARK_COMMUNITY_CHAT_READ") {
           const { communityId, userId } = payload;
-          await communityService.markCommunityChatAsRead(communityId, userId);
+          // Only members may mark a community chat read (COMM-11).
+          if (isObjectIdString(communityId) && isObjectIdString(userId)) {
+            const isMember = await Community.exists({
+              _id: communityId,
+              "members.userId": userId,
+            });
+            if (isMember) {
+              await communityService.markCommunityChatAsRead(
+                communityId,
+                userId,
+              );
+            }
+          }
         }
 
         if (eventType === "SEND_COMMUNITY_MESSAGE") {
