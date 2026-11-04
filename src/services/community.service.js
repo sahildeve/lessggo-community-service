@@ -301,7 +301,11 @@ export const searchCommunities = async ({
 }) => {
   const query = { isActive: true };
 
-  if (city) query.city = new RegExp(city, "i");
+  // Treat the city as plain text, not a regex pattern (COMM-16).
+  if (city) {
+    const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    query.city = new RegExp(`^${escaped}`, "i");
+  }
   if (search) query.$text = { $search: search };
 
   const skip = (page - 1) * limit;
