@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import helmet from "helmet";
 import morgan from "morgan";
-import cookieParser from "cookie-parser";
 import directChatRoutes from "./src/routes/directChat.routes.js";
 import communityRoutes from "./src/routes/community.routes.js";
 import swaggerUi from "swagger-ui-express";
@@ -26,8 +25,11 @@ app.get("/health", (_req, res) => {
 app.use(gatewayOnly);
 
 app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
+// Express 5 leaves req.body undefined when no body is sent (COMM-15).
+app.use((req, _res, next) => {
+  req.body ??= {};
+  next();
+});
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 
 // ─── Routes ───────────
