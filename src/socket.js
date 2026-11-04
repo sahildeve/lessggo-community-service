@@ -4,7 +4,10 @@ import redis from "./config/redis.js";
 import logger from "./utils/logger.js";
 
 const initSocket = (httpServer) => {
-  const io = new Server(httpServer);
+  // Not attached to the HTTP server (COMM-02): no client can connect here.
+  // This instance only emits and joins sockets through the Redis adapter;
+  // browsers connect to the gateway only.
+  const io = new Server();
 
   try {
     // Adapter clients sirf inter-instance broadcasting ke liye hain — koi user request
