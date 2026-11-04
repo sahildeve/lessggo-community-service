@@ -32,6 +32,47 @@ const MAX_JOIN_AGE_MS = 60_000; // ignore join requests that waited too long
 const isObjectIdString = (value) =>
   typeof value === "string" && /^[a-f\d]{24}$/i.test(value);
 
+// ── Subscription lifecycle (COMM-10) ──
+// Keep track of running subscriptions so we can restart one after an error
+// (the Pub/Sub stream can close and never reopen) and close all on shutdown.
+const activeSubscriptions = new Map(); // name -> Subscription
+const restartAttempts = new Map(); // name -> number
+const pendingRestarts = new Set();
+let stopping = false;
+
+const scheduleRestart = (io, subscriptionName) => {
+  if (stopping || pendingRestarts.has(subscriptionName)) return;
+  const attempt = restartAttempts.get(subscriptionName) || 0;
+  const delay = Math.min(30_000, 1000 * 2 ** attempt);
+  restartAttempts.set(subscriptionName, attempt + 1);
+  pendingRestarts.add(subscriptionName);
+  logger.warn("Restarting community subscription", {
+    subscriptionName,
+    inMs: delay,
+  });
+
+  setTimeout(async () => {
+    pendingRestarts.delete(subscriptionName);
+    const old = activeSubscriptions.get(subscriptionName);
+    activeSubscriptions.delete(subscriptionName);
+    try {
+      old?.removeAllListeners();
+      await old?.close();
+    } catch {
+      // already closed
+    }
+    startCommunitySubscriber(io, subscriptionName);
+  }, delay);
+};
+
+// Called on shutdown: stop pulling new messages and close streams cleanly.
+export const stopCommunitySubscribers = async () => {
+  stopping = true;
+  await Promise.allSettled(
+    [...activeSubscriptions.values()].map((s) => s.close()),
+  );
+};
+
 // subscriptionName param — same handler do subscriptions pe chalta hai
 // (community-events + auth-events ka USER_DELETED); eventType pe branch karta hai
 export const startCommunitySubscriber = (
@@ -39,7 +80,13 @@ export const startCommunitySubscriber = (
   subscriptionName = SUBSCRIPTION_NAME,
 ) => {
   try {
-    const subscription = pubsub.subscription(subscriptionName);
+    if (stopping) return;
+    // At most 50 messages in flight per subscription, so a burst cannot
+    // starve REST requests of database connections (COMM-10).
+    const subscription = pubsub.subscription(subscriptionName, {
+      flowControl: { maxMessages: 50, allowExcessMessages: false },
+    });
+    activeSubscriptions.set(subscriptionName, subscription);
 
     subscription.on("message", async (message) => {
       try {
@@ -654,6 +701,7 @@ export const startCommunitySubscriber = (
         // Acknowledge the message
         message.ack();
         await markProcessed(message.id, SUBSCRIBER_CONTEXT);
+        restartAttempts.set(subscriptionName, 0); // healthy again
         logger.info(
           `Processed community event: ${eventType} (MsgID: ${message.id})`,
         );
@@ -669,6 +717,7 @@ export const startCommunitySubscriber = (
         subscription: subscriptionName,
         message: error.message,
       });
+      scheduleRestart(io, subscriptionName);
     });
 
     logger.info(`Community Subscriber listening on ${subscriptionName}`);
@@ -676,5 +725,6 @@ export const startCommunitySubscriber = (
     logger.error("Failed to start Community Subscriber:", {
       message: err.message,
     });
+    scheduleRestart(io, subscriptionName);
   }
 };
