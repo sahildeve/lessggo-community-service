@@ -236,9 +236,16 @@ export const getUsersStatus = async (req, res) => {
       return error(res, "userIds array is required", 400);
     }
 
+    // Only people you have an accepted chat with (COMM-20): nobody can
+    // track the online / last-seen status of strangers.
+    const partnerIds = new Set(
+      await directChatService.getDirectChatParticipantIds(req.user.sub),
+    );
+    const allowedIds = [...new Set(userIds)].filter((id) => partnerIds.has(id));
+
     const statusMap = await directChatService.getUsersOnlineStatus(
       redis,
-      userIds,
+      allowedIds,
     );
 
     return success(res, { statusMap }, "Status fetched successfully");

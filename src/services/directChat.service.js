@@ -480,16 +480,22 @@ export const getDirectChatParticipantIds = async (userId) => {
   return Array.from(participantIds);
 };
 
-// ─── Get status of multiple users (from Redis)
-export const getUsersOnlineStatus = async (redis, userIds) => {
+// ─── Online status for many users in one Redis round trip (COMM-20)
+export const getUsersOnlineStatus = async (redisClient, userIds) => {
+  if (!userIds.length) return {};
+
+  const raws = await redisClient.mget(userIds.map((id) => `user_status:${id}`));
   const statusMap = {};
 
-  for (const id of userIds) {
-    const raw = await redis.get(`user_status:${id}`);
-    statusMap[id] = raw
-      ? JSON.parse(raw)
-      : { status: "offline", lastSeenAt: null };
-  }
+  userIds.forEach((id, i) => {
+    let data = { status: "offline", lastSeenAt: null };
+    try {
+      if (raws[i]) data = JSON.parse(raws[i]);
+    } catch {
+      // bad value in Redis: treat as offline
+    }
+    statusMap[id] = data;
+  });
 
   return statusMap;
 };
