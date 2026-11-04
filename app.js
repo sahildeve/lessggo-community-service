@@ -31,7 +31,8 @@ app.use((req, _res, next) => {
   req.body ??= {};
   next();
 });
-app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+// Cloud Run already logs every request in production; morgan only locally (COMM-26).
+if (process.env.NODE_ENV !== "production") app.use(morgan("dev"));
 
 // ─── Routes ───────────
 app.use("/api/direct-chat", directChatRoutes);

@@ -578,7 +578,7 @@ export const startCommunitySubscriber = (
             { "members.userId": userId },
             { $pull: { members: { userId: userId } } },
           );
-          logger.info(
+          logger.debug(
             `${tag} Community member entries removed: ${membersPulled.modifiedCount}`,
           );
 
@@ -587,7 +587,7 @@ export const startCommunitySubscriber = (
             { "joinRequests.userId": userId },
             { $pull: { joinRequests: { userId } } },
           );
-          logger.info(
+          logger.debug(
             `${tag} Community join requests removed: ${requestsPulled.modifiedCount}`,
           );
 
@@ -598,7 +598,7 @@ export const startCommunitySubscriber = (
             { "createdBy.userId": userId },
             { $set: { "createdBy.username": "Deleted User" } },
           );
-          logger.info(
+          logger.debug(
             `${tag} Own communities anonymized: ${ownCommunities.modifiedCount}`,
           );
 
@@ -614,7 +614,7 @@ export const startCommunitySubscriber = (
               },
             },
           );
-          logger.info(
+          logger.debug(
             `${tag} CommunityMessage anonymized: ${communityMessages.modifiedCount}`,
           );
 
@@ -623,7 +623,7 @@ export const startCommunitySubscriber = (
             { "seenBy.userId": userId },
             { $pull: { seenBy: { userId } } },
           );
-          logger.info(
+          logger.debug(
             `${tag} CommunityMessage seenBy entries removed: ${communitySeenPulled.modifiedCount}`,
           );
 
@@ -641,7 +641,7 @@ export const startCommunitySubscriber = (
             },
             { arrayFilters: [{ "p.userId": userId }] },
           );
-          logger.info(
+          logger.debug(
             `${tag} DirectChat participant anonymized: ${directChats.modifiedCount}`,
           );
 
@@ -650,7 +650,7 @@ export const startCommunitySubscriber = (
             { requestedBy: userId },
             { $set: { requestMessage: null } },
           );
-          logger.info(
+          logger.debug(
             `${tag} DirectChat requestMessage cleared: ${requestMessages.modifiedCount}`,
           );
 
@@ -665,7 +665,7 @@ export const startCommunitySubscriber = (
               },
             },
           );
-          logger.info(
+          logger.debug(
             `${tag} DirectMessage anonymized: ${directMessages.modifiedCount}`,
           );
 
@@ -674,13 +674,13 @@ export const startCommunitySubscriber = (
             { "seenBy.userId": userId },
             { $pull: { seenBy: { userId } } },
           );
-          logger.info(
+          logger.debug(
             `${tag} DirectMessage seenBy entries removed: ${directSeenPulled.modifiedCount}`,
           );
 
           // 6. User ki notifications
           const notifications = await Notification.deleteMany({ userId });
-          logger.info(
+          logger.debug(
             `${tag} Notification deleted: ${notifications.deletedCount}`,
           );
 
@@ -689,11 +689,11 @@ export const startCommunitySubscriber = (
             redis.del(`user_info:${userId}`),
             redis.del(`user_status:${userId}`),
           ]);
-          logger.info(
+          logger.debug(
             `${tag} Redis cleared: user_info ${cacheDeleted}, user_status ${presenceDeleted}`,
           );
 
-          logger.info(
+          logger.debug(
             `Wiped out all community data for deleted user: ${userId}`,
           );
         }
@@ -702,7 +702,7 @@ export const startCommunitySubscriber = (
         message.ack();
         await markProcessed(message.id, SUBSCRIBER_CONTEXT);
         restartAttempts.set(subscriptionName, 0); // healthy again
-        logger.info(
+        logger.debug(
           `Processed community event: ${eventType} (MsgID: ${message.id})`,
         );
       } catch (err) {

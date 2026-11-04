@@ -7,7 +7,7 @@ export const publishEvent = async (eventType, payload) => {
   try {
     const dataBuffer = Buffer.from(JSON.stringify({ eventType, payload }));
     const messageId = await pubsub.topic(TOPIC_NAME).publishMessage({ data: dataBuffer });
-    logger.info(`Event published: ${eventType} (MsgID: ${messageId})`);
+    logger.debug(`Event published: ${eventType} (MsgID: ${messageId})`);
     return messageId;
   } catch (err) {
     logger.error(`Failed to publish event ${eventType}:`, { message: err.message });
