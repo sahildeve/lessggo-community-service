@@ -1,7 +1,17 @@
 import DirectChat from "../models/DirectChat.js";
 import DirectMessage from "../models/DirectMessage.js";
 import { getUsersByIds } from "../utils/authServiceClient.js";
-import logger from "../utils/logger.js";
+
+// ─── Unread counting (COMM-07): same approach as communities.
+const UNREAD_COUNT_LIMIT = 100;
+const directUnreadFilter = (chatId, userId, lastReadAt) => ({
+  chatId,
+  senderId: { $ne: userId },
+  isDeleted: false,
+  ...(lastReadAt
+    ? { createdAt: { $gt: lastReadAt } }
+    : { "seenBy.userId": { $ne: userId } }),
+});
 
 // ─── Send Chat Request
 export const sendChatRequest = async (
@@ -290,12 +300,11 @@ export const getUserChats = async (userId) => {
   // ── Har chat ke liye unread count + enriched participants
   const chatsWithUnread = await Promise.all(
     chats.map(async (chat) => {
-      const unreadCount = await DirectMessage.countDocuments({
-        chatId: chat._id,
-        senderId: { $ne: userId },
-        "seenBy.userId": { $ne: userId },
-        isDeleted: false,
-      });
+      const me = chat.participants.find((p) => p.userId.toString() === userId);
+      const unreadCount = await DirectMessage.countDocuments(
+        directUnreadFilter(chat._id, userId, me?.lastReadAt),
+        { limit: UNREAD_COUNT_LIMIT },
+      );
 
       const participants = chat.participants.map((p) => {
         const id = p.userId.toString();
@@ -500,30 +509,38 @@ export const getUsersOnlineStatus = async (redisClient, userIds) => {
   return statusMap;
 };
 
-// ─── Unread count — kitni chats me unread messages hain (messages nahi, chats)
+// Number of chats with at least one unread message (COMM-07).
 export const getDirectUnreadCount = async (userId) => {
   const chats = await DirectChat.find({
     "participants.userId": userId,
     status: "accepted",
   })
-    .select("_id")
+    .select("participants.userId participants.lastReadAt")
     .lean();
+  if (!chats.length) return 0;
 
-  const chatIds = chats.map((c) => c._id);
-  if (!chatIds.length) return 0;
+  const hasUnread = await Promise.all(
+    chats.map((chat) => {
+      const me = chat.participants.find((p) => p.userId.toString() === userId);
+      return DirectMessage.exists(
+        directUnreadFilter(chat._id, userId, me?.lastReadAt),
+      );
+    }),
+  );
 
-  const chatsWithUnread = await DirectMessage.distinct("chatId", {
-    chatId: { $in: chatIds },
-    senderId: { $ne: userId },
-    "seenBy.userId": { $ne: userId },
-    isDeleted: false,
-  });
-
-  return chatsWithUnread.length;
+  return hasUnread.filter(Boolean).length;
 };
 
-// ─── Mark all unread messages in a chat as seen by user
 export const markDirectChatAsRead = async (chatId, userId) => {
+  const now = new Date();
+
+  // One cheap update: the read position used for unread counts (COMM-07).
+  await DirectChat.updateOne(
+    { _id: chatId, "participants.userId": userId },
+    { $set: { "participants.$.lastReadAt": now } },
+  );
+
+  // Per-message receipts ("seen" ticks) kept as they are.
   await DirectMessage.updateMany(
     {
       chatId,
@@ -532,7 +549,7 @@ export const markDirectChatAsRead = async (chatId, userId) => {
       isDeleted: false,
     },
     {
-      $addToSet: { seenBy: { userId, seenAt: new Date() } },
+      $addToSet: { seenBy: { userId, seenAt: now } },
     },
   );
 };

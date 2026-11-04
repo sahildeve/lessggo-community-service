@@ -11,6 +11,8 @@ const directChatSchema = new mongoose.Schema(
           type: String,
           default: null,
         },
+        // When this participant last read the chat; unread = messages after this (COMM-07).
+        lastReadAt: { type: Date, default: null },
       },
     ],
 

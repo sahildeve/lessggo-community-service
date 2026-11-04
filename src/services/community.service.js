@@ -1,7 +1,21 @@
 import Community from "../models/Community.js";
 import CommunityMessage from "../models/CommunityMessage.js";
 import { getUsersByIds } from "../utils/authServiceClient.js";
-import logger from "../utils/logger.js";
+
+// ─── Unread counting (COMM-07)
+// Members with a read position: count messages after it (uses the
+// {communityId, createdAt} index). Members without one yet (old data): fall
+// back to seenBy until they open the chat once. Capped: the app shows "99+".
+const UNREAD_COUNT_LIMIT = 100;
+const communityUnreadFilter = (communityId, userId, lastReadAt) => ({
+  communityId,
+  senderId: { $ne: userId },
+  isDeleted: false,
+  messageType: "text",
+  ...(lastReadAt
+    ? { createdAt: { $gt: lastReadAt } }
+    : { "seenBy.userId": { $ne: userId } }),
+});
 
 // ─── Create Community
 export const createCommunity = async (
@@ -183,13 +197,13 @@ export const getMyCommunitites = async (userId) => {
   // ── Har community ke liye unread count + enriched members
   const communitiesWithUnread = await Promise.all(
     communities.map(async (community) => {
-      const unreadCount = await CommunityMessage.countDocuments({
-        communityId: community._id,
-        senderId: { $ne: userId },
-        "seenBy.userId": { $ne: userId },
-        isDeleted: false,
-        messageType: "text",
-      });
+      const me = (community.members || []).find(
+        (m) => m.userId.toString() === userId,
+      );
+      const unreadCount = await CommunityMessage.countDocuments(
+        communityUnreadFilter(community._id, userId, me?.lastReadAt),
+        { limit: UNREAD_COUNT_LIMIT },
+      );
 
       const members = (community.members || []).map((m) => ({
         ...enrich(m),
@@ -459,30 +473,35 @@ export const saveSystemMessage = async (communityId, message) => {
   return msg;
 };
 
-// ─── Unread count — kitni communities me unread hain (messages nahi)
+// Number of communities with at least one unread message (COMM-07).
 export const getCommunityUnreadCount = async (userId) => {
-  const communities = await Community.find({
-    "members.userId": userId,
-  })
-    .select("_id")
+  const communities = await Community.find({ "members.userId": userId })
+    .select("members.userId members.lastReadAt")
     .lean();
+  if (!communities.length) return 0;
 
-  const communityIds = communities.map((c) => c._id);
-  if (!communityIds.length) return 0;
+  const hasUnread = await Promise.all(
+    communities.map((community) => {
+      const me = community.members.find((m) => m.userId.toString() === userId);
+      return CommunityMessage.exists(
+        communityUnreadFilter(community._id, userId, me?.lastReadAt),
+      );
+    }),
+  );
 
-  const withUnread = await CommunityMessage.distinct("communityId", {
-    communityId: { $in: communityIds },
-    senderId: { $ne: userId },
-    "seenBy.userId": { $ne: userId },
-    isDeleted: false,
-    messageType: "text",
-  });
-
-  return withUnread.length;
+  return hasUnread.filter(Boolean).length;
 };
 
-// ─── Mark all unread messages in a community as seen by user
 export const markCommunityChatAsRead = async (communityId, userId) => {
+  const now = new Date();
+
+  // One cheap update: the read position used for unread counts (COMM-07).
+  await Community.updateOne(
+    { _id: communityId, "members.userId": userId },
+    { $set: { "members.$.lastReadAt": now } },
+  );
+
+  // Per-message receipts kept for now, until the frontend stops using seenBy.
   await CommunityMessage.updateMany(
     {
       communityId,
@@ -492,7 +511,7 @@ export const markCommunityChatAsRead = async (communityId, userId) => {
       messageType: "text",
     },
     {
-      $addToSet: { seenBy: { userId, seenAt: new Date() } },
+      $addToSet: { seenBy: { userId, seenAt: now } },
     },
   );
 };

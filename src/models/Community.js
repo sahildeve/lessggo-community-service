@@ -32,6 +32,8 @@ const communitySchema = new mongoose.Schema(
         userId: { type: mongoose.Schema.Types.ObjectId, required: true },
         username: { type: String },
         joinedAt: { type: Date, default: Date.now },
+        // When this member last read the chat; unread = messages after this (COMM-07).
+        lastReadAt: { type: Date, default: null },
         role: { type: String, enum: ["admin", "member"], default: "member" },
         status: {
           type: String,
