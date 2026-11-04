@@ -39,6 +39,8 @@ const communityMessageSchema = new mongoose.Schema(
 );
 
 communityMessageSchema.index({ communityId: 1, createdAt: -1 });
+// Account deletion finds a user's messages by sender (COMM-06).
+communityMessageSchema.index({ senderId: 1 });
 // Unread count queries ke liye
 communityMessageSchema.index({
   communityId: 1,

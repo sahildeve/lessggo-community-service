@@ -34,6 +34,8 @@ const directMessageSchema = new mongoose.Schema(
 );
 
 directMessageSchema.index({ chatId: 1, createdAt: -1 });
+// Account deletion finds a user's messages by sender (COMM-06).
+directMessageSchema.index({ senderId: 1 });
 // Unread count queries ke liye
 directMessageSchema.index({ chatId: 1, senderId: 1, "seenBy.userId": 1 });
 
