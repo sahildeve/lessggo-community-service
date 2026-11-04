@@ -15,7 +15,10 @@ export const createCommunity = async (req, res) => {
     );
     return success(res, { community }, "Community created successfully", 201);
   } catch (err) {
-    logger.error("Create community error:", { message: err.message, stack: err.stack });
+    logger.error("Create community error:", {
+      message: err.message,
+      stack: err.stack,
+    });
     return error(res, err.message, err.status || 500);
   }
 };
@@ -229,7 +232,14 @@ export const getCommunity = async (req, res) => {
 
     // ── Non-members ko sirf basic info — members list aur requests nahi
     if (!isMember) {
-      const { members, joinRequests, ...publicInfo } = community;
+      // Non-members never see chat content or activity timing (COMM-04).
+      const {
+        members,
+        joinRequests,
+        lastMessage,
+        lastMessageAt,
+        ...publicInfo
+      } = community;
 
       return success(
         res,

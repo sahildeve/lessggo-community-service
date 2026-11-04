@@ -308,9 +308,13 @@ export const searchCommunities = async ({
       },
     },
     {
+      // Search is for discovering communities: never expose chat content (COMM-04).
+      // Members see the last message in my-communities.
       $project: {
         members: 0,
         joinRequests: 0,
+        lastMessage: 0,
+        lastMessageAt: 0,
         __v: 0,
       },
     },
