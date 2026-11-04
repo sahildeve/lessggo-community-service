@@ -170,6 +170,12 @@ export const leaveCommunity = async (req, res) => {
       req.user.sub,
     );
 
+    // Stop live messages to the leaver's open sockets right away (GW-01).
+    req.app
+      .get("io")
+      ?.in(`user:${req.user.sub}`)
+      .socketsLeave(`community_${communityId}`);
+
     // ── Pub/Sub: Send event ──
     await publishEvent("COMMUNITY_LEFT", {
       communityId,

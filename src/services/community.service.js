@@ -224,7 +224,10 @@ export const getMyCommunitites = async (userId) => {
 
 // ─── Leave Community
 export const leaveCommunity = async (communityId, userId) => {
-  const community = await Community.findById(communityId);
+  const community = await Community.findById(communityId, {
+    name: 1,
+    createdBy: 1,
+  }).lean();
 
   if (!community) {
     const err = new Error("Community not found");
@@ -239,10 +242,17 @@ export const leaveCommunity = async (communityId, userId) => {
     throw err;
   }
 
-  community.members = community.members.filter(
-    (m) => m.userId.toString() !== userId,
+  // Atomic and member-only (COMM-12): remove the user only if they are a member,
+  // without rewriting the whole members array (which could undo a parallel join).
+  const result = await Community.updateOne(
+    { _id: communityId, "members.userId": userId },
+    { $pull: { members: { userId } } },
   );
-  await community.save();
+  if (result.modifiedCount === 0) {
+    const err = new Error("You are not a member of this community");
+    err.status = 409;
+    throw err;
+  }
 
   return community;
 };
